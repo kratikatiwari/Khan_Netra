@@ -1,0 +1,21 @@
+const express = require('express');
+const router = express.Router();
+
+router.use('/auth', require('./authRoutes'));
+router.use('/mines', require('./mineRoutes'));
+router.use('/violations', require('./violationRoutes'));
+router.use('/incidents', require('./incidentRoutes'));
+router.use('/environment', require('./environmentRoutes'));
+router.use('/inspections', require('./inspectionRoutes'));
+router.use('/documents', require('./documentRoutes'));
+router.use('/notifications', require('./notificationRoutes'));
+router.use('/analytics', require('./analyticsRoutes'));
+router.use('/compliance', require('./complianceRoutes'));
+router.use('/reports', require('./reportRoutes'));
+router.use('/ai', require('./aiRoutes'));
+
+router.get('/health', (req, res) => {
+  res.json({ success: true, message: 'KhanNetra API is running', timestamp: new Date(), version: '1.0.0' });
+});
+
+module.exports = router;
