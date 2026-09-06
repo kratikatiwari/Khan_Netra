@@ -5,154 +5,140 @@ const API_BASE = '/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 30000,
+  timeout: 60000,                // 60s for LLM calls
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor - attach token
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+}, (err) => Promise.reject(err));
 
-// Response interceptor - handle errors
 api.interceptors.response.use(
-  (response) => response.data,
-  (error) => {
-    const msg = error.response?.data?.message || error.message || 'An error occurred';
-    if (error.response?.status === 401) {
+  (res) => res.data,
+  (err) => {
+    const msg = err.response?.data?.message || err.message || 'An error occurred';
+    if (err.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
-      }
-    } else if (error.response?.status !== 404) {
+      if (!window.location.pathname.includes('/login')) window.location.href = '/login';
+    } else if (err.response?.status !== 404) {
       toast.error(msg);
     }
-    return Promise.reject(error);
+    return Promise.reject(err);
   }
 );
 
-// Auth
 export const authApi = {
-  login: (data) => api.post('/auth/login', data),
-  register: (data) => api.post('/auth/register', data),
-  getMe: () => api.get('/auth/me'),
-  refresh: (data) => api.post('/auth/refresh', data),
-  updateProfile: (data) => api.put('/auth/profile', data),
-  changePassword: (data) => api.put('/auth/change-password', data),
+  login:          (d) => api.post('/auth/login', d),
+  register:       (d) => api.post('/auth/register', d),
+  getMe:          ()  => api.get('/auth/me'),
+  refresh:        (d) => api.post('/auth/refresh', d),
+  updateProfile:  (d) => api.put('/auth/profile', d),
+  changePassword: (d) => api.put('/auth/change-password', d),
 };
 
-// Mines
 export const minesApi = {
-  getAll: (params) => api.get('/mines', { params }),
-  getById: (id) => api.get(`/mines/${id}`),
+  getAll:   (p) => api.get('/mines', { params: p }),
+  getById:  (id) => api.get(`/mines/${id}`),
   getStats: (id) => api.get(`/mines/${id}/stats`),
-  create: (data) => api.post('/mines', data),
-  update: (id, data) => api.put(`/mines/${id}`, data),
-  delete: (id) => api.delete(`/mines/${id}`),
+  create:   (d)  => api.post('/mines', d),
+  update:   (id, d) => api.put(`/mines/${id}`, d),
+  delete:   (id) => api.delete(`/mines/${id}`),
 };
 
-// Violations
 export const violationsApi = {
-  getAll: (params) => api.get('/violations', { params }),
-  getById: (id) => api.get(`/violations/${id}`),
-  create: (data) => api.post('/violations', data),
-  update: (id, data) => api.put(`/violations/${id}`, data),
-  delete: (id) => api.delete(`/violations/${id}`),
-  getCorrectiveActions: (params) => api.get('/violations/corrective-actions', { params }),
-  createCorrectiveAction: (data) => api.post('/violations/corrective-actions', data),
-  updateCorrectiveAction: (id, data) => api.put(`/violations/corrective-actions/${id}`, data),
+  getAll:                 (p)      => api.get('/violations', { params: p }),
+  getById:                (id)     => api.get(`/violations/${id}`),
+  create:                 (d)      => api.post('/violations', d),
+  update:                 (id, d)  => api.put(`/violations/${id}`, d),
+  delete:                 (id)     => api.delete(`/violations/${id}`),
+  getCorrectiveActions:   (p)      => api.get('/violations/corrective-actions', { params: p }),
+  createCorrectiveAction: (d)      => api.post('/violations/corrective-actions', d),
+  updateCorrectiveAction: (id, d)  => api.put(`/violations/corrective-actions/${id}`, d),
 };
 
-// Incidents
 export const incidentsApi = {
-  getAll: (params) => api.get('/incidents', { params }),
-  getById: (id) => api.get(`/incidents/${id}`),
-  create: (data) => api.post('/incidents', data),
-  update: (id, data) => api.put(`/incidents/${id}`, data),
-  getStats: () => api.get('/incidents/stats'),
+  getAll:   (p)     => api.get('/incidents', { params: p }),
+  getById:  (id)    => api.get(`/incidents/${id}`),
+  create:   (d)     => api.post('/incidents', d),
+  update:   (id, d) => api.put(`/incidents/${id}`, d),
+  getStats: ()      => api.get('/incidents/stats'),
 };
 
-// Environment
 export const environmentApi = {
-  getReadings: (params) => api.get('/environment', { params }),
-  createReading: (data) => api.post('/environment', data),
-  getAlerts: () => api.get('/environment/alerts'),
-  getDashboard: () => api.get('/environment/dashboard'),
-  getTrends: (params) => api.get('/environment/trends', { params }),
+  getReadings:     (p)  => api.get('/environment', { params: p }),
+  createReading:   (d)  => api.post('/environment', d),
+  getAlerts:       ()   => api.get('/environment/alerts'),
+  getDashboard:    ()   => api.get('/environment/dashboard'),
+  getTrends:       (p)  => api.get('/environment/trends', { params: p }),
   getLatestByMine: (id) => api.get(`/environment/mine/${id}/latest`),
 };
 
-// Inspections
 export const inspectionsApi = {
-  getAll: (params) => api.get('/inspections', { params }),
-  getById: (id) => api.get(`/inspections/${id}`),
-  create: (data) => api.post('/inspections', data),
-  update: (id, data) => api.put(`/inspections/${id}`, data),
-  saveChecklist: (data) => api.post('/inspections/checklist', data),
-  getSchedule: (params) => api.get('/inspections/schedule', { params }),
+  getAll:        (p)     => api.get('/inspections', { params: p }),
+  getById:       (id)    => api.get(`/inspections/${id}`),
+  create:        (d)     => api.post('/inspections', d),
+  update:        (id, d) => api.put(`/inspections/${id}`, d),
+  saveChecklist: (d)     => api.post('/inspections/checklist', d),
+  getSchedule:   (p)     => api.get('/inspections/schedule', { params: p }),
 };
 
-// Documents
 export const documentsApi = {
-  getAll: (params) => api.get('/documents', { params }),
-  getById: (id) => api.get(`/documents/${id}`),
-  upload: (formData) => api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  update: (id, data) => api.put(`/documents/${id}`, data),
-  delete: (id) => api.delete(`/documents/${id}`),
-  getExpiryAlerts: () => api.get('/documents/expiry-alerts'),
-  analyze: (id) => api.post(`/documents/${id}/analyze`),
+  getAll:         (p)     => api.get('/documents', { params: p }),
+  getById:        (id)    => api.get(`/documents/${id}`),
+  upload:         (fd)    => api.post('/documents', fd, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  update:         (id, d) => api.put(`/documents/${id}`, d),
+  delete:         (id)    => api.delete(`/documents/${id}`),
+  getExpiryAlerts:()      => api.get('/documents/expiry-alerts'),
+  analyze:        (id)    => api.post(`/documents/${id}/analyze`),
 };
 
-// Notifications
 export const notificationsApi = {
-  getAll: (params) => api.get('/notifications', { params }),
-  getUnreadCount: () => api.get('/notifications/unread-count'),
-  markRead: (id) => api.put(`/notifications/${id}/read`),
-  markAllRead: () => api.put('/notifications/all/read'),
-  delete: (id) => api.delete(`/notifications/${id}`),
+  getAll:        (p)  => api.get('/notifications', { params: p }),
+  getUnreadCount:()   => api.get('/notifications/unread-count'),
+  markRead:      (id) => api.put(`/notifications/${id}/read`),
+  markAllRead:   ()   => api.put('/notifications/all/read'),
+  delete:        (id) => api.delete(`/notifications/${id}`),
 };
 
-// Analytics
 export const analyticsApi = {
-  getDashboard: () => api.get('/analytics/dashboard'),
-  getComplianceTrend: (params) => api.get('/analytics/compliance-trend', { params }),
-  getMineRanking: () => api.get('/analytics/mine-ranking'),
-  getViolationAnalytics: (params) => api.get('/analytics/violations', { params }),
-  getProductionAnalytics: () => api.get('/analytics/production'),
-  getAuditLogs: (params) => api.get('/analytics/audit-logs', { params }),
+  getDashboard:        ()  => api.get('/analytics/dashboard'),
+  getComplianceTrend:  (p) => api.get('/analytics/compliance-trend', { params: p }),
+  getMineRanking:      ()  => api.get('/analytics/mine-ranking'),
+  getViolationAnalytics:(p)=> api.get('/analytics/violations', { params: p }),
+  getProductionAnalytics:()=> api.get('/analytics/production'),
+  getAuditLogs:        (p) => api.get('/analytics/audit-logs', { params: p }),
 };
 
-// Compliance
 export const complianceApi = {
-  getRecords: (params) => api.get('/compliance/records', { params }),
-  create: (data) => api.post('/compliance/records', data),
-  update: (id, data) => api.put(`/compliance/records/${id}`, data),
-  getMineScore: (id) => api.get(`/compliance/mine/${id}/score`),
-  runAiAssessment: (id) => api.post(`/compliance/mine/${id}/ai-assessment`),
-  getRegulations: (params) => api.get('/compliance/regulations', { params }),
-  createRegulation: (data) => api.post('/compliance/regulations', data),
+  getRecords:       (p)     => api.get('/compliance/records', { params: p }),
+  create:           (d)     => api.post('/compliance/records', d),
+  update:           (id, d) => api.put(`/compliance/records/${id}`, d),
+  getMineScore:     (id)    => api.get(`/compliance/mine/${id}/score`),
+  runAiAssessment:  (id)    => api.post(`/compliance/mine/${id}/ai-assessment`),
+  getRegulations:   (p)     => api.get('/compliance/regulations', { params: p }),
+  createRegulation: (d)     => api.post('/compliance/regulations', d),
 };
 
-// Reports
 export const reportsApi = {
-  downloadPDF: (params) => api.get('/reports/pdf', { params, responseType: 'blob' }),
-  downloadExcel: (params) => api.get('/reports/excel', { params, responseType: 'blob' }),
+  downloadPDF:   (p) => api.get('/reports/pdf',   { params: p, responseType: 'blob' }),
+  downloadExcel: (p) => api.get('/reports/excel', { params: p, responseType: 'blob' }),
 };
 
-// AI
 export const aiApi = {
-  chat: (data) => api.post('/ai/chat', data),
-  getChatHistory: (sessionId) => api.get(`/ai/chat/${sessionId}`),
-  getSessions: () => api.get('/ai/chat/sessions'),
-  getRiskPrediction: (mineId) => api.get(`/ai/risk/${mineId}`),
-  getUsers: () => api.get('/ai/users'),
-  updateUser: (id, data) => api.put(`/ai/users/${id}`, data),
+  // Chat
+  chat:          (d)   => api.post('/ai/chat', d),
+  getSessions:   ()    => api.get('/ai/chat/sessions'),
+  getChatHistory:(sid) => api.get(`/ai/chat/${sid}`),
+  deleteSession: (sid) => api.delete(`/ai/chat/${sid}`),
+  clearSession:  (sid) => api.delete(`/ai/chat/${sid}/clear`),
+
+  // Risk & users
+  getRiskPrediction: (id)     => api.get(`/ai/risk/${id}`),
+  getUsers:          ()       => api.get('/ai/users'),
+  updateUser:        (id, d)  => api.put(`/ai/users/${id}`, d),
 };
 
 export default api;
