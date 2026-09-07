@@ -5,7 +5,7 @@ const API_BASE = '/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 60000,                // 60s for LLM calls
+  timeout: 60000,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -40,12 +40,12 @@ export const authApi = {
 };
 
 export const minesApi = {
-  getAll:   (p) => api.get('/mines', { params: p }),
-  getById:  (id) => api.get(`/mines/${id}`),
-  getStats: (id) => api.get(`/mines/${id}/stats`),
-  create:   (d)  => api.post('/mines', d),
+  getAll:   (p)     => api.get('/mines', { params: p }),
+  getById:  (id)    => api.get(`/mines/${id}`),
+  getStats: (id)    => api.get(`/mines/${id}/stats`),
+  create:   (d)     => api.post('/mines', d),
   update:   (id, d) => api.put(`/mines/${id}`, d),
-  delete:   (id) => api.delete(`/mines/${id}`),
+  delete:   (id)    => api.delete(`/mines/${id}`),
 };
 
 export const violationsApi = {
@@ -86,13 +86,13 @@ export const inspectionsApi = {
 };
 
 export const documentsApi = {
-  getAll:         (p)     => api.get('/documents', { params: p }),
-  getById:        (id)    => api.get(`/documents/${id}`),
-  upload:         (fd)    => api.post('/documents', fd, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  update:         (id, d) => api.put(`/documents/${id}`, d),
-  delete:         (id)    => api.delete(`/documents/${id}`),
-  getExpiryAlerts:()      => api.get('/documents/expiry-alerts'),
-  analyze:        (id)    => api.post(`/documents/${id}/analyze`),
+  getAll:          (p)     => api.get('/documents', { params: p }),
+  getById:         (id)    => api.get(`/documents/${id}`),
+  upload:          (fd)    => api.post('/documents', fd, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  update:          (id, d) => api.put(`/documents/${id}`, d),
+  delete:          (id)    => api.delete(`/documents/${id}`),
+  getExpiryAlerts: ()      => api.get('/documents/expiry-alerts'),
+  analyze:         (id)    => api.post(`/documents/${id}/analyze`),
 };
 
 export const notificationsApi = {
@@ -104,12 +104,12 @@ export const notificationsApi = {
 };
 
 export const analyticsApi = {
-  getDashboard:        ()  => api.get('/analytics/dashboard'),
-  getComplianceTrend:  (p) => api.get('/analytics/compliance-trend', { params: p }),
-  getMineRanking:      ()  => api.get('/analytics/mine-ranking'),
-  getViolationAnalytics:(p)=> api.get('/analytics/violations', { params: p }),
-  getProductionAnalytics:()=> api.get('/analytics/production'),
-  getAuditLogs:        (p) => api.get('/analytics/audit-logs', { params: p }),
+  getDashboard:         ()  => api.get('/analytics/dashboard'),
+  getComplianceTrend:   (p) => api.get('/analytics/compliance-trend', { params: p }),
+  getMineRanking:       ()  => api.get('/analytics/mine-ranking'),
+  getViolationAnalytics:(p) => api.get('/analytics/violations', { params: p }),
+  getProductionAnalytics:() => api.get('/analytics/production'),
+  getAuditLogs:         (p) => api.get('/analytics/audit-logs', { params: p }),
 };
 
 export const complianceApi = {
@@ -128,17 +128,82 @@ export const reportsApi = {
 };
 
 export const aiApi = {
-  // Chat
-  chat:          (d)   => api.post('/ai/chat', d),
-  getSessions:   ()    => api.get('/ai/chat/sessions'),
-  getChatHistory:(sid) => api.get(`/ai/chat/${sid}`),
-  deleteSession: (sid) => api.delete(`/ai/chat/${sid}`),
-  clearSession:  (sid) => api.delete(`/ai/chat/${sid}/clear`),
-
-  // Risk & users
+  getStatus:         ()       => api.get('/ai/status'),
+  chat:              (d)      => api.post('/ai/chat', d),
+  getSessions:       ()       => api.get('/ai/chat/sessions'),
+  getChatHistory:    (sid)    => api.get(`/ai/chat/${sid}`),
+  deleteSession:     (sid)    => api.delete(`/ai/chat/${sid}`),
+  clearSession:      (sid)    => api.delete(`/ai/chat/${sid}/clear`),
   getRiskPrediction: (id)     => api.get(`/ai/risk/${id}`),
   getUsers:          ()       => api.get('/ai/users'),
   updateUser:        (id, d)  => api.put(`/ai/users/${id}`, d),
 };
 
+// ── NEW: AI Safety Vision ─────────────────────────────────────────────────────
+export const visionApi = {
+  health:       ()   => api.get('/vision/health'),
+  ppeReference: ()   => api.get('/vision/ppe-reference'),
+  /**
+   * Detect PPE in an image file.
+   * @param {File}   imageFile
+   * @param {object} opts  { mine_type, mine_id, location, min_confidence }
+   */
+  detect: (imageFile, opts = {}) => {
+    const fd = new FormData();
+    fd.append('image', imageFile);
+    if (opts.mine_type)       fd.append('mine_type',       opts.mine_type);
+    if (opts.mine_id)         fd.append('mine_id',         opts.mine_id);
+    if (opts.location)        fd.append('location',        opts.location);
+    if (opts.min_confidence)  fd.append('min_confidence',  String(opts.min_confidence));
+    return api.post('/vision/detect', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 45000,
+    });
+  },
+};
+
+// ── Contractors ───────────────────────────────────────────────────────────────
+export const contractorsApi = {
+  getAll:   (p)     => api.get('/contractors', { params: p }),
+  getById:  (id)    => api.get(`/contractors/${id}`),
+  getStats: (p)     => api.get('/contractors/stats', { params: p }),
+  create:   (d)     => api.post('/contractors', d),
+  update:   (id, d) => api.put(`/contractors/${id}`, d),
+  delete:   (id)    => api.delete(`/contractors/${id}`),
+};
+
+// ── Field Reports ─────────────────────────────────────────────────────────────
+export const fieldReportsApi = {
+  getAll:   (p)     => api.get('/field-reports', { params: p }),
+  getById:  (id)    => api.get(`/field-reports/${id}`),
+  getMap:   (p)     => api.get('/field-reports/map', { params: p }),
+  create:   (fd)    => api.post('/field-reports', fd, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  update:   (id, d) => api.put(`/field-reports/${id}`, d),
+};
+
+// ── Compliance Deadlines ──────────────────────────────────────────────────────
+export const deadlinesApi = {
+  getAll:     (p)     => api.get('/deadlines', { params: p }),
+  getOverdue: (p)     => api.get('/deadlines/overdue', { params: p }),
+  getUpcoming:(p)     => api.get('/deadlines/upcoming', { params: p }),
+  create:     (d)     => api.post('/deadlines', d),
+  update:     (id, d) => api.put(`/deadlines/${id}`, d),
+};
+
+// ── Risk Dashboard ────────────────────────────────────────────────────────────
+export const riskApi = {
+  getHighRisk:  ()  => api.get('/risk/high-risk'),
+  getRoleBased: ()  => api.get('/risk/role-based'),
+  getGis:       (p) => api.get('/risk/gis', { params: p }),
+};
+
 export default api;
+
+// ── OCR Document Extractor ────────────────────────────────────────────────────
+export const ocrApi = {
+  health:  () => api.get('/ocr/health'),
+  extract: (formData) => api.post('/ocr/extract', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000,
+  }),
+};

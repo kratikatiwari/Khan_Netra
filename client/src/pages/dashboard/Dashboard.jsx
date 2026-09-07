@@ -3,15 +3,16 @@ import { Link } from 'react-router-dom';
 import {
   FiMapPin, FiAlertTriangle, FiAlertCircle, FiUsers,
   FiArrowRight, FiBell, FiFileText, FiActivity,
-  FiCpu, FiShield, FiWind, FiTrendingUp, FiTrendingDown,
+  FiCpu, FiShield, FiWind, FiTrendingUp, FiClock,
+  FiUserCheck, FiNavigation, FiZap,
 } from 'react-icons/fi';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, RadarChart, Radar, PolarGrid,
-  PolarAngleAxis, PieChart, Pie, Cell,
+  PolarAngleAxis,
 } from 'recharts';
-import { analyticsApi } from '../../services/api';
-import { formatDate, formatNumber, formatCurrency, scoreToColor, scoreToBg, timeAgo } from '../../utils/helpers';
+import { analyticsApi, deadlinesApi, contractorsApi, fieldReportsApi, riskApi } from '../../services/api';
+import { formatDate, formatNumber, scoreToColor, timeAgo } from '../../utils/helpers';
 import Badge from '../../components/ui/Badge';
 import ScoreBar from '../../components/ui/ScoreBar';
 import { CardSkeleton } from '../../components/ui/LoadingSpinner';
@@ -26,13 +27,31 @@ const SAFETY = '#f97316';
 
 export default function Dashboard() {
   const { user } = useAuthStore();
-  const [data,    setData]    = useState(null);
-  const [trend,   setTrend]   = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [data,         setData]         = useState(null);
+  const [trend,        setTrend]        = useState([]);
+  const [overdueD,     setOverdueD]     = useState([]);
+  const [upcomingD,    setUpcomingD]    = useState([]);
+  const [highRisk,     setHighRisk]     = useState([]);
+  const [fieldAlerts,  setFieldAlerts]  = useState([]);
+  const [loading,      setLoading]      = useState(true);
 
   useEffect(() => {
-    Promise.all([analyticsApi.getDashboard(), analyticsApi.getComplianceTrend({ months: 6 })])
-      .then(([d, t]) => { setData(d.data); setTrend(t.data); })
+    Promise.all([
+      analyticsApi.getDashboard(),
+      analyticsApi.getComplianceTrend({ months: 6 }),
+      deadlinesApi.getOverdue().catch(()=>({data:[]})),
+      deadlinesApi.getUpcoming({ days: 14 }).catch(()=>({data:[]})),
+      riskApi.getHighRisk().catch(()=>({data:{high_risk_mines:[]}})),
+      fieldReportsApi.getAll({ severity:'critical', status:'open', limit:5 }).catch(()=>({data:[]})),
+    ])
+      .then(([d, t, ov, up, hr, fr]) => {
+        setData(d.data);
+        setTrend(t.data);
+        setOverdueD(ov.data || []);
+        setUpcomingD(up.data || []);
+        setHighRisk((hr.data?.high_risk_mines || []).slice(0, 4));
+        setFieldAlerts(fr.data || []);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -317,6 +336,124 @@ export default function Dashboard() {
             <p className="text-xs text-coal-700 text-center py-6">No active alerts ✓</p>
           )}
         </div>
+      </div>
+
+      {/* ── NEW ROW: Deadlines + High-Risk Mines + Field Alerts ─────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+        {/* Overdue / Upcoming Deadlines */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="section-title mb-0 flex items-center gap-2">
+              <FiClock size={14} className="text-amber-400"/> Compliance Deadlines
+            </h3>
+            <Link to="/deadlines" className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold">View All →</Link>
+          </div>
+          {overdueD.length > 0 && (
+            <div className="mb-3 p-2.5 rounded-xl bg-danger-600/10 border border-danger-500/20">
+              <p className="text-[10px] font-black text-danger-400 uppercase tracking-widest mb-1.5">⛔ {overdueD.length} Overdue</p>
+              {overdueD.slice(0,3).map(d => (
+                <div key={d.id} className="flex justify-between py-1 border-b border-danger-500/10 last:border-0">
+                  <span className="text-xs text-danger-300 truncate">{d.title}</span>
+                  <span className="text-[10px] text-danger-500 shrink-0 ml-2">{Math.abs(d.days_remaining)}d ago</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {upcomingD.length > 0 && (
+            <div>
+              <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1.5">⏰ Due Within 14 Days</p>
+              {upcomingD.slice(0,4).map(d => (
+                <div key={d.id} className="flex justify-between py-1.5 border-b border-coal-700/40 last:border-0">
+                  <span className="text-xs text-coal-300 truncate">{d.title}</span>
+                  <span className={clsx('text-[10px] shrink-0 ml-2 font-bold', d.days_remaining <= 3 ? 'text-danger-400' : 'text-amber-400')}>
+                    {d.days_remaining}d
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {!overdueD.length && !upcomingD.length && (
+            <p className="text-xs text-coal-700 text-center py-6">No urgent deadlines ✓</p>
+          )}
+        </div>
+
+        {/* High-Risk Mines */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="section-title mb-0 flex items-center gap-2">
+              <FiZap size={14} className="text-danger-400"/> High-Risk Mines
+            </h3>
+            <Link to="/risk-dashboard" className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold">Risk Dashboard →</Link>
+          </div>
+          <div className="space-y-2.5">
+            {highRisk.map((m, i) => (
+              <Link to={`/mines/${m.id}`} key={m.id}
+                className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-coal-800/50 transition-colors">
+                <div className={clsx('w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0',
+                  i===0?'bg-danger-600/25 text-danger-400':i===1?'bg-amber-500/20 text-amber-400':'bg-coal-700 text-coal-500')}>
+                  #{i+1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-coal-200 truncate">{m.name}</p>
+                  <p className="text-[10px] text-coal-600">{m.state} · {m.critical_violations||0} critical</p>
+                </div>
+                <span className={clsx('text-sm font-black tabular-nums',
+                  parseFloat(m.risk_score)>=70?'text-danger-400':parseFloat(m.risk_score)>=40?'text-amber-400':'text-success-400')}>
+                  {parseFloat(m.risk_score).toFixed(0)}%
+                </span>
+              </Link>
+            ))}
+            {!highRisk.length && <p className="text-xs text-coal-700 text-center py-6">No high-risk mines ✓</p>}
+          </div>
+        </div>
+
+        {/* Field Reports (critical open) */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="section-title mb-0 flex items-center gap-2">
+              <FiNavigation size={14} className="text-safety-400"/> Field Reports
+            </h3>
+            <Link to="/field-reports" className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold">View All →</Link>
+          </div>
+          <div className="space-y-2.5">
+            {fieldAlerts.map(r => (
+              <div key={r.id} className="flex items-start gap-3 p-2.5 rounded-xl bg-danger-600/8 border border-danger-500/15">
+                <FiAlertTriangle size={13} className="text-danger-400 shrink-0 mt-0.5"/>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-coal-200 truncate">{r.title}</p>
+                  <p className="text-[11px] text-coal-600">{r.mine_name} · {r.location_name||'Unknown location'}</p>
+                  <p className="text-[10px] text-coal-700 mt-0.5">{timeAgo(r.created_at)}</p>
+                </div>
+              </div>
+            ))}
+            {!fieldAlerts.length && (
+              <div className="text-center py-6">
+                <p className="text-xs text-coal-700">No critical field reports</p>
+                <Link to="/field-reports" className="text-[11px] text-amber-400 hover:underline mt-1 block">Submit a Report</Link>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Quick Links Row ────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { to:'/contractors',  icon:FiUserCheck,  label:'Contractors',    sub:'Safety & compliance', color:'text-info-400 bg-info-600/10 border-info-500/20' },
+          { to:'/deadlines',    icon:FiClock,      label:'Deadlines',      sub:'Track & escalate',    color:'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+          { to:'/field-reports',icon:FiNavigation, label:'Field Reports',  sub:'Geo-tagged reports',  color:'text-safety-400 bg-safety-500/10 border-safety-500/20' },
+          { to:'/risk-dashboard',icon:FiTrendingUp,label:'Risk Dashboard', sub:'Anomaly indicators',  color:'text-danger-400 bg-danger-600/10 border-danger-500/20' },
+        ].map(q => (
+          <Link key={q.to} to={q.to}
+            className={clsx('flex items-center gap-3 p-3 rounded-xl border transition-all hover:shadow-hover', q.color)}>
+            <q.icon size={18} className="shrink-0"/>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-coal-200">{q.label}</p>
+              <p className="text-[10px] text-coal-500">{q.sub}</p>
+            </div>
+          </Link>
+        ))}
       </div>
     </div>
   );

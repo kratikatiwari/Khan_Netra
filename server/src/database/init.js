@@ -273,6 +273,74 @@ CREATE TABLE IF NOT EXISTS chat_history (
   tokens_used INTEGER,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+-- ── NEW: Contractors ────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS contractors (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  registration_number TEXT,
+  mine_id TEXT NOT NULL,
+  work_type TEXT NOT NULL,
+  contract_start TEXT,
+  contract_end TEXT,
+  safety_score REAL DEFAULT 50,
+  compliance_score REAL DEFAULT 50,
+  workers_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'active',
+  contact_name TEXT,
+  contact_phone TEXT,
+  contact_email TEXT,
+  last_inspection_date TEXT,
+  violations_count INTEGER DEFAULT 0,
+  incidents_count INTEGER DEFAULT 0,
+  notes TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ── NEW: Field Reports (geo-tagged, time-stamped) ────────────────────────────
+CREATE TABLE IF NOT EXISTS field_reports (
+  id TEXT PRIMARY KEY,
+  report_number TEXT UNIQUE NOT NULL,
+  mine_id TEXT NOT NULL,
+  reported_by TEXT NOT NULL,
+  report_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  latitude REAL,
+  longitude REAL,
+  location_name TEXT,
+  severity TEXT DEFAULT 'info',
+  status TEXT DEFAULT 'open',
+  images TEXT,
+  tags TEXT,
+  follow_up_required INTEGER DEFAULT 0,
+  follow_up_date TEXT,
+  resolved_date TEXT,
+  resolved_by TEXT,
+  resolution_notes TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ── NEW: Compliance Deadlines / Escalations ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS compliance_deadlines (
+  id TEXT PRIMARY KEY,
+  mine_id TEXT NOT NULL,
+  compliance_record_id TEXT,
+  title TEXT NOT NULL,
+  description TEXT,
+  deadline_date TEXT NOT NULL,
+  responsible_person TEXT,
+  escalation_level INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'pending',
+  reminder_sent INTEGER DEFAULT 0,
+  escalated_to TEXT,
+  completed_date TEXT,
+  created_by TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
 `);
 
 console.log('✅ Tables created');

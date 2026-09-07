@@ -86,19 +86,26 @@ cron.schedule('0 9 * * *', async () => {
   } catch (e) { console.error('Cron error:', e.message); }
 });
 
+// Compliance deadline escalation — every 6 hours
+cron.schedule('0 */6 * * *', async () => {
+  try {
+    const { runEscalation } = require('./controllers/deadlineController');
+    await runEscalation();
+  } catch (e) { console.error('Escalation cron error:', e.message); }
+});
+
 const PORT = process.env.PORT || 5000;
+httpServer.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is in use. Kill the process using it and restart.`);
+    process.exit(1);
+  }
+  throw err;
+});
 httpServer.listen(PORT, () => {
-  console.log(`
-╔══════════════════════════════════════════════════════════╗
-║          KhanNetra Server Started Successfully           ║
-║   AI-Based Smart Governance & Compliance System          ║
-╠══════════════════════════════════════════════════════════╣
-║  Server:  http://localhost:${PORT}                         ║
-║  API:     http://localhost:${PORT}/api/v1                  ║
-║  Health:  http://localhost:${PORT}/api/v1/health           ║
-║  Mode:    ${process.env.NODE_ENV || 'development'}                              ║
-╚══════════════════════════════════════════════════════════╝
-  `);
+  console.log(`✅ KhanNetra running → http://localhost:${PORT}/api/v1`);
+  console.log(`   Health: http://localhost:${PORT}/api/v1/health`);
+  console.log(`   Mode:   ${process.env.NODE_ENV || 'development'}`);
 });
 
 module.exports = { app, httpServer };

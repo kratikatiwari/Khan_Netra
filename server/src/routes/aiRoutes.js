@@ -5,6 +5,9 @@ const { authenticate, authorize } = require('../middleware/auth');
 
 router.use(authenticate);
 
+// Status (is AI key configured?)
+router.get('/status', ctrl.getStatus);
+
 // Chat
 router.post('/chat',                  ctrl.chat);
 router.get('/chat/sessions',          ctrl.getSessions);

@@ -12,7 +12,13 @@ router.use('/notifications', require('./notificationRoutes'));
 router.use('/analytics', require('./analyticsRoutes'));
 router.use('/compliance', require('./complianceRoutes'));
 router.use('/reports', require('./reportRoutes'));
-router.use('/ai', require('./aiRoutes'));
+router.use('/ai',           require('./aiRoutes'));
+router.use('/vision',       require('./visionRoutes'));
+router.use('/contractors',  require('./contractorRoutes'));
+router.use('/field-reports',require('./fieldReportRoutes'));
+router.use('/deadlines',    require('./deadlineRoutes'));
+router.use('/risk',         require('./riskDashboardRoutes'));
+router.use('/ocr',          require('./ocrRoutes'));
 
 router.get('/health', (req, res) => {
   res.json({ success: true, message: 'KhanNetra API is running', timestamp: new Date(), version: '1.0.0' });

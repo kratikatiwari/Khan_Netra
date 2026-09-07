@@ -2,7 +2,9 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   FiHome, FiMapPin, FiAlertTriangle, FiAlertCircle, FiWind,
   FiClipboard, FiFileText, FiShield, FiBarChart2, FiMessageSquare,
-  FiUsers, FiBook, FiActivity, FiBookOpen, FiCpu, FiBell, FiChevronLeft, FiChevronRight,
+  FiUsers, FiBook, FiActivity, FiBookOpen, FiCpu, FiBell,
+  FiChevronLeft, FiChevronRight, FiCamera,
+  FiTrendingUp, FiNavigation, FiClock, FiUserCheck, FiLayers, FiSearch,
 } from 'react-icons/fi';
 import useAuthStore from '../../store/authStore';
 import clsx from 'clsx';
@@ -11,31 +13,36 @@ const NAV = [
   {
     title: 'Overview',
     links: [
-      { to: '/dashboard', icon: FiHome,       label: 'Dashboard'        },
-      { to: '/analytics', icon: FiBarChart2,  label: 'Analytics'        },
+      { to: '/dashboard',      icon: FiHome,         label: 'Dashboard'        },
+      { to: '/risk-dashboard', icon: FiTrendingUp,   label: 'Risk Dashboard'   },
+      { to: '/analytics',      icon: FiBarChart2,    label: 'Analytics'        },
     ],
   },
   {
     title: 'Mine Operations',
     links: [
-      { to: '/mines',      icon: FiMapPin,   label: 'Mines & GIS Map'  },
-      { to: '/compliance', icon: FiShield,   label: 'Compliance'       },
+      { to: '/mines',       icon: FiMapPin,    label: 'Mines & GIS Map' },
+      { to: '/gis',         icon: FiLayers,    label: 'Enhanced GIS'    },
+      { to: '/compliance',  icon: FiShield,    label: 'Compliance'      },
+      { to: '/deadlines',   icon: FiClock,     label: 'Deadlines'       },
     ],
   },
   {
     title: 'Safety & Environment',
     links: [
-      { to: '/incidents',   icon: FiAlertTriangle, label: 'Incidents'        },
-      { to: '/environment', icon: FiWind,          label: 'Environment'      },
-      { to: '/violations',  icon: FiAlertCircle,   label: 'Violations'       },
+      { to: '/incidents',     icon: FiAlertTriangle, label: 'Incidents'      },
+      { to: '/environment',   icon: FiWind,          label: 'Environment'    },
+      { to: '/violations',    icon: FiAlertCircle,   label: 'Violations'     },
+      { to: '/field-reports', icon: FiNavigation,    label: 'Field Reports'  },
     ],
   },
   {
     title: 'Operations',
     links: [
-      { to: '/inspections', icon: FiClipboard, label: 'Inspections'  },
-      { to: '/documents',   icon: FiFileText,  label: 'Documents'    },
-      { to: '/reports',     icon: FiActivity,  label: 'Reports'      },
+      { to: '/inspections',  icon: FiClipboard,  label: 'Inspections'  },
+      { to: '/contractors',  icon: FiUserCheck,  label: 'Contractors'  },
+      { to: '/documents',    icon: FiFileText,   label: 'Documents'    },
+      { to: '/reports',      icon: FiActivity,   label: 'Reports'      },
     ],
   },
   {
@@ -43,14 +50,16 @@ const NAV = [
     links: [
       { to: '/ai/chat',                 icon: FiMessageSquare, label: 'AI Assistant'   },
       { to: '/ai/risk',                 icon: FiCpu,           label: 'Risk Prediction'},
+      { to: '/vision',                  icon: FiCamera,        label: 'Safety Vision'  },
+      { to: '/ocr',                     icon: FiSearch,        label: 'OCR Extractor'  },
       { to: '/compliance/regulations',  icon: FiBookOpen,      label: 'Regulations'    },
     ],
   },
   {
     title: 'Administration',
     links: [
-      { to: '/notifications', icon: FiBell,   label: 'Notifications'  },
-      { to: '/audit',         icon: FiBook,   label: 'Audit Trail',   roles: ['admin','government_officer','inspector'] },
+      { to: '/notifications', icon: FiBell,   label: 'Notifications'    },
+      { to: '/audit',         icon: FiBook,   label: 'Audit Trail',     roles: ['admin','government_officer','inspector'] },
       { to: '/users',         icon: FiUsers,  label: 'User Management', roles: ['admin','government_officer'] },
     ],
   },

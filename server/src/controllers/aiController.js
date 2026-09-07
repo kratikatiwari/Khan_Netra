@@ -34,14 +34,20 @@ Behavior rules:
 
 // ── LLM caller ──────────────────────────────────────────────────────────────
 async function callLLM(messages) {
-  // Try OpenAI first
-  if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'your_openai_api_key_here') {
-    return await callOpenAI(messages);
-  }
-  // Try Gemini
-  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_gemini_api_key_here') {
-    return await callGemini(messages);
-  }
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+
+  // Validate keys properly — not just check for one placeholder string
+  const openaiValid = openaiKey && openaiKey.startsWith('sk-');
+  const geminiValid = geminiKey
+    && geminiKey.length > 20
+    && !geminiKey.toLowerCase().includes('your_')
+    && !geminiKey.toLowerCase().includes('here')
+    && !geminiKey.toLowerCase().includes('get_from')
+    && !geminiKey.toLowerCase().includes('api_key_');
+
+  if (openaiValid) return await callOpenAI(messages);
+  if (geminiValid) return await callGemini(messages);
   throw new Error('NO_API_KEY');
 }
 
@@ -89,6 +95,16 @@ async function callOpenAI(messages) {
 
 async function callGemini(messages) {
   const https = require('https');
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  // Ordered list of models to try (most capable first)
+  const MODELS = [
+    'gemini-2.5-flash',
+    'gemini-3.6-flash',
+    'gemini-flash-latest',
+    'gemini-2.5-flash-lite',
+  ];
+
   // Convert OpenAI-style messages to Gemini format
   const contents = messages
     .filter(m => m.role !== 'system')
@@ -98,42 +114,82 @@ async function callGemini(messages) {
     }));
 
   const systemInstruction = messages.find(m => m.role === 'system')?.content || '';
-  const body = JSON.stringify({
+  const bodyObj = {
     systemInstruction: { parts: [{ text: systemInstruction }] },
     contents,
     generationConfig: { maxOutputTokens: 1024, temperature: 0.7 },
-  });
+  };
 
-  const path = `/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+  let lastError = null;
+  for (const model of MODELS) {
+    const body = JSON.stringify(bodyObj);
+    const apiPath = `/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'generativelanguage.googleapis.com',
-      path,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-    };
-    let data = '';
-    const req = https.request(options, (res) => {
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (json.error) return reject(new Error(json.error.message));
-          const text = json.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
-          resolve({ text, tokens: 0, model: 'gemini-3.6-flash' });
-        } catch (e) { reject(e); }
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const options = {
+          hostname: 'generativelanguage.googleapis.com',
+          path:     apiPath,
+          method:   'POST',
+          headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+        };
+        let data = '';
+        const req = https.request(options, (res) => {
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              if (json.error) {
+                const msg = json.error.message || 'Gemini error';
+                // Retryable errors: model not found, no longer available, high demand
+                const retryable = /not found|no longer available|not supported|high demand|quota/i.test(msg);
+                if (retryable) return reject(Object.assign(new Error(msg), { retryable: true }));
+                return reject(new Error(msg));
+              }
+              const text = json.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
+              resolve({ text, tokens: 0, model });
+            } catch (e) { reject(e); }
+          });
+        });
+        req.on('error', reject);
+        req.setTimeout(30000, () => { req.destroy(); reject(new Error('Gemini timeout')); });
+        req.write(body);
+        req.end();
       });
-    });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
+      return result; // Success — return immediately
+    } catch (err) {
+      lastError = err;
+      if (!err.retryable) throw err; // Non-retryable error — fail fast
+      console.log(`[AI] Model ${model} unavailable, trying next...`);
+    }
+  }
+
+  throw lastError || new Error('All Gemini models unavailable');
 }
 
 // ── Fallback (no API key) ────────────────────────────────────────────────────
 function fallbackResponse(message) {
-  return `⚠️ **AI API key not configured.**\n\nTo enable the real KhanNetra AI assistant:\n\n1. Get an API key from [OpenAI](https://platform.openai.com) or [Google AI Studio](https://aistudio.google.com)\n2. Open \`server/.env\`\n3. Set \`OPENAI_API_KEY=sk-...\` or \`GEMINI_API_KEY=...\`\n4. Restart the server\n\nYour question was: *"${message}"*\n\nOnce configured, KhanNetra AI will answer this and all future questions dynamically in your language.`;
+  return `### KhanNetra AI — Setup Required
+
+To enable real AI responses, add your API key to \`server/.env\`:
+
+**Option 1 — Google Gemini (Free)**
+1. Go to **https://aistudio.google.com/app/apikey**
+2. Click **Create API Key** → copy the key (starts with \`AIzaSy...\`)
+3. Open \`server/.env\` and set:
+   \`\`\`
+   GEMINI_API_KEY=AIzaSyYourKeyHere
+   \`\`\`
+4. Restart the server: stop it and run \`node src/index.js\`
+
+**Option 2 — OpenAI GPT-4o**
+Set \`OPENAI_API_KEY=sk-...\` in the same file.
+
+---
+
+Your question was: *"${message}"*
+
+Once configured, KhanNetra AI will answer in English, Hindi, Bengali, Marathi, Telugu and Tamil with full coal mine regulatory expertise.`;
 }
 
 // ── Exports ──────────────────────────────────────────────────────────────────
@@ -198,6 +254,28 @@ exports.chat = async (req, res, next) => {
       }
     });
   } catch (err) { next(err); }
+};
+
+exports.getStatus = (req, res) => {
+  const geminiKey = process.env.GEMINI_API_KEY || '';
+  const openaiKey = process.env.OPENAI_API_KEY || '';
+  const geminiReady = geminiKey.length > 20
+    && !geminiKey.toLowerCase().includes('your_')
+    && !geminiKey.toLowerCase().includes('here')
+    && !geminiKey.toLowerCase().includes('get_from')
+    && !geminiKey.toLowerCase().includes('api_key_');
+  const openaiReady = openaiKey.startsWith('sk-');
+  const ready = geminiReady || openaiReady;
+  res.json({
+    success: true,
+    data: {
+      ready,
+      backend: openaiReady ? 'openai' : geminiReady ? 'gemini' : 'none',
+      gemini_configured: geminiReady,
+      openai_configured: openaiReady,
+      setup_url: 'https://aistudio.google.com/app/apikey',
+    },
+  });
 };
 
 exports.getChatHistory = async (req, res, next) => {
