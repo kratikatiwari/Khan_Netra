@@ -1,17 +1,24 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { FiEye, FiEyeOff, FiShield, FiUser, FiLock } from 'react-icons/fi';
+import { FiEye, FiEyeOff, FiShield, FiUser, FiLock, FiZap } from 'react-icons/fi';
 import useAuthStore from '../../store/authStore';
 import toast from 'react-hot-toast';
 
-const DEMO_ACCOUNTS = [
-  { role: 'Admin', email: 'admin@khannetra.gov.in', label: 'System Admin' },
-  { role: 'Govt Officer', email: 'officer1@khannetra.gov.in', label: 'Government Officer' },
-  { role: 'Mine Manager', email: 'manager1@khannetra.gov.in', label: 'Mine Manager' },
-  { role: 'Inspector', email: 'inspector1@khannetra.gov.in', label: 'DGMS Inspector' },
-  { role: 'Safety Officer', email: 'safety1@khannetra.gov.in', label: 'Safety Officer' },
-  { role: 'Env. Officer', email: 'env1@khannetra.gov.in', label: 'Environment Officer' },
+const DEMOS = [
+  { role: 'Admin',          email: 'admin@khannetra.gov.in',       label: 'DGMS Director' },
+  { role: 'Govt Officer',   email: 'officer1@khannetra.gov.in',    label: 'Joint Secretary' },
+  { role: 'Mine Manager',   email: 'manager1@khannetra.gov.in',    label: 'Jharia Mine' },
+  { role: 'Inspector',      email: 'inspector1@khannetra.gov.in',  label: 'DGMS Region-2' },
+  { role: 'Safety Officer', email: 'safety1@khannetra.gov.in',     label: 'Safety Dept.' },
+  { role: 'Env Officer',    email: 'env1@khannetra.gov.in',        label: 'CPCB Officer' },
+];
+
+const STATS = [
+  { value: '6+',      label: 'Mines Monitored'     },
+  { value: 'AI',      label: 'Risk Prediction'      },
+  { value: 'Live',    label: 'Environmental Data'   },
+  { value: 'DGMS',    label: 'Regulatory Aligned'   },
 ];
 
 export default function Login() {
@@ -22,12 +29,8 @@ export default function Login() {
 
   const onSubmit = async (data) => {
     const result = await login(data);
-    if (result.success) {
-      toast.success('Welcome back!');
-      navigate('/dashboard');
-    } else {
-      toast.error(result.message || 'Login failed');
-    }
+    if (result.success) { toast.success('Welcome back!'); navigate('/dashboard'); }
+    else toast.error(result.message || 'Login failed');
   };
 
   const quickLogin = (email) => {
@@ -36,145 +39,153 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gov-900 flex">
-      {/* Left Panel */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12 bg-gradient-to-br from-gov-900 via-gov-800 to-primary-900 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-primary-500 blur-3xl" />
-          <div className="absolute bottom-20 right-20 w-96 h-96 rounded-full bg-primary-700 blur-3xl" />
-        </div>
-        <div className="relative">
-          <div className="flex items-center gap-3 mb-12">
-            <div className="w-12 h-12 bg-primary-500 rounded-xl flex items-center justify-center shadow-lg">
-              <span className="text-white font-black text-xl">KN</span>
-            </div>
-            <div>
-              <h1 className="text-white font-black text-2xl">KhanNetra</h1>
-              <p className="text-primary-300 text-xs">DGMS | Ministry of Coal</p>
-            </div>
-          </div>
-          <h2 className="text-white text-4xl font-black leading-tight mb-4">
-            Intelligent<br />Governance.<br />
-            <span className="text-primary-400">Safer Mines.</span><br />
-            Smarter Compliance.
-          </h2>
-          <p className="text-coal-300 text-base leading-relaxed max-w-md">
-            AI-powered monitoring for India's coal mines. Real-time compliance tracking, risk prediction, and automated governance for DGMS.
-          </p>
-        </div>
+    <div className="min-h-screen bg-coal-950 flex" style={{ backgroundImage: 'radial-gradient(circle at 10% 20%, rgba(245,158,11,.06) 0%, transparent 40%), radial-gradient(circle at 90% 80%, rgba(249,115,22,.04) 0%, transparent 40%)' }}>
 
-        <div className="relative grid grid-cols-2 gap-4">
-          {[
-            { label: 'Mines Monitored', value: '6+' },
-            { label: 'Compliance Parameters', value: '50+' },
-            { label: 'AI Risk Assessments', value: 'Real-time' },
-            { label: 'Digital Reports', value: 'Instant' },
-          ].map(item => (
-            <div key={item.label} className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-              <div className="text-white text-2xl font-black">{item.value}</div>
-              <div className="text-coal-300 text-xs mt-1">{item.label}</div>
-            </div>
-          ))}
-        </div>
+      {/* ── Left Panel ──────────────────────────────────────────────────── */}
+      <div className="hidden lg:flex lg:w-[52%] flex-col justify-between p-12 relative overflow-hidden">
+        {/* Background */}
+        <div className="absolute inset-0 bg-coal-900" />
+        <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle at 30% 30%, rgba(245,158,11,.07) 0%, transparent 55%), radial-gradient(circle at 70% 70%, rgba(249,115,22,.05) 0%, transparent 55%)' }} />
 
+        {/* Decorative grid lines */}
+        <div className="absolute inset-0 opacity-[0.03]"
+          style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
+
+        {/* Top — Logo */}
         <div className="relative flex items-center gap-3">
-          <div className="flex -space-x-2">
-            {['R','P','A','S','G'].map((l, i) => (
-              <div key={i} className="w-8 h-8 rounded-full bg-primary-600 border-2 border-gov-900 flex items-center justify-center text-white text-xs font-bold">{l}</div>
+          <div className="w-11 h-11 rounded-xl bg-amber-500 flex items-center justify-center shadow-[0_0_24px_rgba(245,158,11,.5)]">
+            <span className="text-coal-950 font-black text-base">KN</span>
+          </div>
+          <div>
+            <h1 className="text-coal-50 font-black text-xl leading-none">KhanNetra</h1>
+            <p className="text-coal-500 text-xs mt-0.5">DGMS · Ministry of Coal · Govt. of India</p>
+          </div>
+        </div>
+
+        {/* Center — Hero */}
+        <div className="relative">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/25 mb-6">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-amber-400 text-xs font-bold">SIH Problem Statement PC-24</span>
+          </div>
+          <h2 className="text-coal-50 text-4xl font-black leading-[1.1] mb-4">
+            Intelligent<br />
+            <span className="text-amber-400">Governance.</span><br />
+            Safer Mines.
+          </h2>
+          <p className="text-coal-400 text-base leading-relaxed max-w-md">
+            AI-powered compliance monitoring and smart governance platform for India's coal mining sector.
+          </p>
+
+          {/* Stats */}
+          <div className="grid grid-cols-4 gap-3 mt-8">
+            {STATS.map(s => (
+              <div key={s.label} className="bg-coal-800/60 border border-coal-700/50 rounded-xl p-3 text-center">
+                <p className="text-amber-400 font-black text-lg">{s.value}</p>
+                <p className="text-coal-500 text-[10px] mt-0.5 leading-tight">{s.label}</p>
+              </div>
             ))}
           </div>
-          <p className="text-coal-300 text-xs">Used by DGMS officials, Mine Managers & Inspectors</p>
+        </div>
+
+        {/* Bottom — Features */}
+        <div className="relative flex flex-wrap gap-2">
+          {['CMR 2017 Compliant', 'DGMS Aligned', 'Real-time Monitoring', 'AI Risk Engine', 'Multilingual'].map(f => (
+            <span key={f} className="px-3 py-1 rounded-full text-[11px] font-semibold text-coal-500 bg-coal-800/60 border border-coal-700/40">
+              {f}
+            </span>
+          ))}
         </div>
       </div>
 
-      {/* Right Panel - Login Form */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-coal-50">
+      {/* ── Right Panel — Form ──────────────────────────────────────────── */}
+      <div className="flex-1 flex items-center justify-center p-6 lg:p-10">
         <div className="w-full max-w-md">
-          {/* Logo (mobile) */}
-          <div className="lg:hidden flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center">
-              <span className="text-white font-black text-lg">KN</span>
+
+          {/* Mobile logo */}
+          <div className="lg:hidden flex items-center gap-3 mb-8 justify-center">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center">
+              <span className="text-coal-950 font-black">KN</span>
             </div>
             <div>
-              <h1 className="text-coal-900 font-black text-xl">KhanNetra</h1>
+              <h1 className="text-coal-50 font-black text-lg">KhanNetra</h1>
               <p className="text-coal-500 text-xs">DGMS Compliance System</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-xl p-8 border border-coal-200">
-            <div className="mb-6">
-              <h2 className="text-2xl font-black text-coal-900">Sign In</h2>
+          <div className="bg-coal-900 rounded-2xl border border-coal-700/60 p-8 shadow-panel">
+            <div className="mb-7">
+              <h2 className="text-2xl font-black text-coal-50">Sign In</h2>
               <p className="text-coal-500 text-sm mt-1">Enter your credentials to access the system</p>
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="form-group">
                 <label className="label">Email Address</label>
-                <div className="relative">
-                  <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-coal-400" size={16} />
+                <div className="input-group">
+                  <FiUser className="input-group-icon" size={15} />
                   <input
                     {...register('email', { required: 'Email required', pattern: { value: /\S+@\S+\.\S+/, message: 'Invalid email' } })}
-                    type="email"
-                    className="input pl-9"
-                    placeholder="you@khannetra.gov.in"
+                    type="email" className="input" placeholder="you@khannetra.gov.in"
                   />
                 </div>
-                {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
+                {errors.email && <p className="text-xs text-danger-400 mt-1">{errors.email.message}</p>}
               </div>
 
               <div className="form-group">
                 <label className="label">Password</label>
-                <div className="relative">
-                  <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-coal-400" size={16} />
+                <div className="input-group relative">
+                  <FiLock className="input-group-icon" size={15} />
                   <input
                     {...register('password', { required: 'Password required' })}
                     type={showPwd ? 'text' : 'password'}
-                    className="input pl-9 pr-9"
-                    placeholder="••••••••"
+                    className="input pr-10" placeholder="••••••••"
                   />
-                  <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-coal-400 hover:text-coal-600">
-                    {showPwd ? <FiEyeOff size={16} /> : <FiEye size={16} />}
+                  <button type="button" onClick={() => setShowPwd(!showPwd)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-coal-500 hover:text-coal-300 transition-colors">
+                    {showPwd ? <FiEyeOff size={15}/> : <FiEye size={15}/>}
                   </button>
                 </div>
-                {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>}
+                {errors.password && <p className="text-xs text-danger-400 mt-1">{errors.password.message}</p>}
               </div>
 
-              <button type="submit" disabled={isSubmitting} className="btn-primary w-full justify-center py-3 text-base font-semibold">
+              <button type="submit" disabled={isSubmitting} className="btn-primary btn-lg w-full justify-center mt-2">
                 {isSubmitting ? (
-                  <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Signing in...</span>
+                  <><div className="w-4 h-4 border-2 border-coal-900/40 border-t-coal-900 rounded-full animate-spin"/>Signing in…</>
                 ) : (
-                  <span className="flex items-center gap-2"><FiShield size={18} /> Sign In Securely</span>
+                  <><FiShield size={16}/> Sign In Securely</>
                 )}
               </button>
             </form>
 
-            <div className="mt-4 text-center">
-              <span className="text-coal-500 text-sm">Don't have an account? </span>
-              <Link to="/register" className="text-primary-600 font-semibold text-sm hover:underline">Register</Link>
+            <div className="mt-4 text-center text-sm">
+              <span className="text-coal-600">Don't have an account? </span>
+              <Link to="/register" className="text-amber-400 font-semibold hover:text-amber-300 transition-colors">Register</Link>
             </div>
 
             {/* Demo accounts */}
-            <div className="mt-6 pt-6 border-t border-coal-100">
-              <p className="text-xs font-semibold text-coal-500 uppercase tracking-wide mb-3">Quick Demo Access</p>
+            <div className="mt-6 pt-6 border-t border-coal-700/50">
+              <div className="flex items-center gap-2 mb-3">
+                <FiZap size={12} className="text-amber-500" />
+                <p className="text-[10px] font-bold text-coal-500 uppercase tracking-widest">Quick Demo Access</p>
+              </div>
               <div className="grid grid-cols-2 gap-2">
-                {DEMO_ACCOUNTS.map(acc => (
-                  <button
-                    key={acc.email}
-                    type="button"
-                    onClick={() => quickLogin(acc.email)}
-                    className="text-left px-3 py-2 rounded-lg border border-coal-200 hover:border-primary-300 hover:bg-primary-50 transition-colors group"
-                  >
-                    <p className="text-xs font-bold text-coal-700 group-hover:text-primary-700">{acc.role}</p>
-                    <p className="text-[10px] text-coal-400 truncate">{acc.label}</p>
+                {DEMOS.map(acc => (
+                  <button key={acc.email} type="button" onClick={() => quickLogin(acc.email)}
+                    className="text-left px-3 py-2.5 rounded-xl bg-coal-800/60 border border-coal-700/40 hover:border-amber-500/40 hover:bg-amber-500/5 transition-all group">
+                    <p className="text-xs font-bold text-coal-300 group-hover:text-amber-400 transition-colors">{acc.role}</p>
+                    <p className="text-[10px] text-coal-600 mt-0.5">{acc.label}</p>
                   </button>
                 ))}
               </div>
-              <p className="text-[10px] text-coal-400 text-center mt-2">Password: KhanNetra@2024</p>
+              <p className="text-[10px] text-coal-700 text-center mt-3">
+                Password for all: <span className="text-coal-500 font-mono">KhanNetra@2024</span>
+              </p>
             </div>
           </div>
 
-          <p className="text-center text-xs text-coal-400 mt-6">
-            🔒 Secured by DGMS | Ministry of Coal, Govt. of India<br />
+          <p className="text-center text-[10px] text-coal-700 mt-5">
+            🔒 Secured · DGMS · Ministry of Coal · Govt. of India<br/>
             © 2026 KhanNetra. All Rights Reserved.
           </p>
         </div>

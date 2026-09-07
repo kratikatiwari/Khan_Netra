@@ -1,70 +1,65 @@
-import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
-import { Link } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { scoreToColor } from '../../utils/helpers';
 import clsx from 'clsx';
 
-// Fix default marker icon
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconRetinaUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl:      'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl:    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-const createCustomIcon = (status, compliance_score) => {
-  const color = status === 'suspended' ? '#ef4444' : status === 'under_inspection' ? '#f59e0b' : parseFloat(compliance_score) < 60 ? '#f59e0b' : '#22c55e';
+const mkIcon = (status, score) => {
+  const color = status==='suspended' ? '#ef4444'
+    : status==='under_inspection'    ? '#f59e0b'
+    : parseFloat(score) < 60        ? '#f97316'
+    : '#22c55e';
   return L.divIcon({
     className: '',
-    html: `<div style="background:${color};width:18px;height:18px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>`,
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
+    html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(255,255,255,.8);box-shadow:0 0 10px ${color}60,0 2px 6px rgba(0,0,0,.5);"></div>`,
+    iconSize: [16,16], iconAnchor:[8,8],
   });
 };
 
 export default function MineMap({ mines = [] }) {
-  const validMines = mines.filter(m => m.latitude && m.longitude);
-  const center = validMines.length ? [validMines[0].latitude, validMines[0].longitude] : [22.5, 82.5];
+  const valid  = mines.filter(m => m.latitude && m.longitude);
+  const center = valid.length ? [valid[0].latitude, valid[0].longitude] : [22.5, 82.5];
 
   return (
-    <MapContainer center={center} zoom={5} style={{ height: '100%', width: '100%' }}>
+    <MapContainer center={center} zoom={5} style={{ height:'100%', width:'100%' }}>
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
       />
-      {validMines.map(mine => (
-        <Marker
-          key={mine.id}
-          position={[mine.latitude, mine.longitude]}
-          icon={createCustomIcon(mine.status, mine.compliance_score)}
-        >
-          <Popup maxWidth={280}>
-            <div className="p-1">
-              <div className="font-bold text-sm mb-1">{mine.name}</div>
-              <div className="text-xs text-gray-500 mb-2">{mine.mine_id} · {mine.type}</div>
-              <div className="grid grid-cols-2 gap-1 text-xs mb-2">
-                <div><span className="text-gray-400">State:</span> {mine.state}</div>
-                <div><span className="text-gray-400">Workers:</span> {mine.workers_count}</div>
-                <div><span className="text-gray-400">Compliance:</span>
-                  <span className={clsx('font-bold ml-1', parseFloat(mine.compliance_score) >= 80 ? 'text-green-600' : parseFloat(mine.compliance_score) >= 60 ? 'text-yellow-600' : 'text-red-600')}>
-                    {parseFloat(mine.compliance_score).toFixed(1)}%
-                  </span>
-                </div>
-                <div><span className="text-gray-400">Risk:</span>
-                  <span className={clsx('font-bold ml-1', parseFloat(mine.risk_score) >= 70 ? 'text-red-600' : 'text-yellow-600')}>
-                    {parseFloat(mine.risk_score).toFixed(1)}%
-                  </span>
-                </div>
+      {valid.map(mine => (
+        <Marker key={mine.id} position={[mine.latitude, mine.longitude]}
+          icon={mkIcon(mine.status, mine.compliance_score)}>
+          <Popup maxWidth={260}>
+            <div style={{ fontFamily:'Inter,sans-serif', fontSize:'13px' }}>
+              <p style={{ fontWeight:800, marginBottom:4, color:'#f59e0b' }}>{mine.name}</p>
+              <p style={{ color:'#6c757d', marginBottom:6, fontSize:'11px' }}>{mine.mine_id} · {mine.type}</p>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'3px 12px', fontSize:'11px', marginBottom:8 }}>
+                <span style={{ color:'#6c757d' }}>State:</span><span>{mine.state}</span>
+                <span style={{ color:'#6c757d' }}>Workers:</span><span>{mine.workers_count?.toLocaleString()}</span>
+                <span style={{ color:'#6c757d' }}>Compliance:</span>
+                <span style={{ fontWeight:700, color: parseFloat(mine.compliance_score)>=80?'#22c55e':parseFloat(mine.compliance_score)>=60?'#f59e0b':'#ef4444' }}>
+                  {parseFloat(mine.compliance_score).toFixed(1)}%
+                </span>
+                <span style={{ color:'#6c757d' }}>Risk:</span>
+                <span style={{ fontWeight:700, color: parseFloat(mine.risk_score)>=70?'#ef4444':'#f59e0b' }}>
+                  {parseFloat(mine.risk_score).toFixed(1)}%
+                </span>
               </div>
-              <div className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${mine.status === 'active' ? 'bg-green-100 text-green-700' : mine.status === 'suspended' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                {mine.status.replace('_', ' ').toUpperCase()}
-              </div>
+              <span style={{ padding:'2px 8px', borderRadius:999, fontSize:'10px', fontWeight:700,
+                background: mine.status==='active'?'rgba(34,197,94,.2)':mine.status==='suspended'?'rgba(239,68,68,.2)':'rgba(245,158,11,.2)',
+                color: mine.status==='active'?'#22c55e':mine.status==='suspended'?'#ef4444':'#f59e0b' }}>
+                {mine.status.replace(/_/g,' ').toUpperCase()}
+              </span>
             </div>
           </Popup>
         </Marker>
       ))}
-      {/* Legend */}
     </MapContainer>
   );
 }

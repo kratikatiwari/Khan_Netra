@@ -1,120 +1,126 @@
 import { useState } from 'react';
-import { FiUser, FiLock, FiSave } from 'react-icons/fi';
+import { FiUser, FiLock, FiSave, FiShield } from 'react-icons/fi';
 import { useForm } from 'react-hook-form';
 import { authApi } from '../services/api';
 import useAuthStore from '../store/authStore';
-import { formatDate } from '../utils/helpers';
+import { formatDate, ROLES } from '../utils/helpers';
 import Badge from '../components/ui/Badge';
 import toast from 'react-hot-toast';
-import { ROLES } from '../utils/helpers';
+import clsx from 'clsx';
 
 export default function Profile() {
   const { user, refreshUser } = useAuthStore();
-  const [activeTab, setActiveTab] = useState('profile');
+  const [tab, setTab] = useState('profile');
 
-  const { register: regProfile, handleSubmit: handleProfile, formState: { isSubmitting: ps } } = useForm({ defaultValues: user || {} });
-  const { register: regPwd, handleSubmit: handlePwd, reset: resetPwd, formState: { isSubmitting: pwds } } = useForm();
+  const { register: rP, handleSubmit: hP, formState:{isSubmitting:psub} } = useForm({ defaultValues: user||{} });
+  const { register: rW, handleSubmit: hW, reset: resetPwd, formState:{isSubmitting:pwsub} } = useForm();
 
-  const onProfileSave = async (data) => {
-    try {
-      await authApi.updateProfile(data);
-      await refreshUser();
-      toast.success('Profile updated');
-    } catch {}
+  const saveProfile = async (data) => {
+    try { await authApi.updateProfile(data); await refreshUser(); toast.success('Profile updated'); }
+    catch {}
   };
-
-  const onPasswordChange = async (data) => {
+  const changePassword = async (data) => {
     if (data.new_password !== data.confirm_password) { toast.error('Passwords do not match'); return; }
-    try {
-      await authApi.changePassword(data);
-      toast.success('Password changed');
-      resetPwd();
-    } catch {}
+    try { await authApi.changePassword(data); toast.success('Password changed'); resetPwd(); }
+    catch {}
   };
 
-  const role = ROLES[user?.role];
+  const roleInfo = ROLES[user?.role];
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-2xl space-y-5">
       <div>
         <h1 className="page-title">My Profile</h1>
-        <p className="page-subtitle">Manage your account information and security settings</p>
+        <p className="page-subtitle">Manage your account information and security</p>
       </div>
 
-      {/* Profile Card */}
-      <div className="card flex items-center gap-4">
-        <div className="w-16 h-16 rounded-full bg-primary-600 flex items-center justify-center text-white text-2xl font-black shrink-0">
-          {user?.full_name?.[0] || 'U'}
+      {/* Profile card */}
+      <div className="card flex items-center gap-5">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border-2 border-amber-500/40 flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(245,158,11,.2)]">
+          <span className="text-amber-400 text-2xl font-black">{user?.full_name?.[0]||'U'}</span>
         </div>
         <div>
-          <h2 className="text-lg font-bold text-coal-900">{user?.full_name}</h2>
-          <p className="text-sm text-coal-500">{user?.email}</p>
-          <div className="flex items-center gap-2 mt-1">
-            {role && <Badge color="blue">{role.label}</Badge>}
-            {user?.designation && <span className="text-xs text-coal-400">· {user.designation}</span>}
+          <h2 className="text-xl font-black text-coal-50">{user?.full_name}</h2>
+          <p className="text-coal-500 text-sm">{user?.email}</p>
+          <div className="flex items-center gap-2 mt-2">
+            {roleInfo && <Badge color={roleInfo.color}>{roleInfo.label}</Badge>}
+            {user?.designation && <span className="text-xs text-coal-600">· {user.designation}</span>}
           </div>
+        </div>
+        <div className="ml-auto text-right hidden sm:block">
+          <p className="text-[10px] text-coal-600 uppercase tracking-widest">Last Login</p>
+          <p className="text-xs text-coal-400 mt-0.5">{formatDate(user?.last_login)||'—'}</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-coal-100 p-1 rounded-xl w-fit">
-        {[{ id: 'profile', label: 'Profile Info', icon: FiUser }, { id: 'password', label: 'Change Password', icon: FiLock }].map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${activeTab === t.id ? 'bg-white text-coal-900 shadow-sm' : 'text-coal-500'}`}>
-            <t.icon size={14} /> {t.label}
+      <div className="tab-bar">
+        {[{id:'profile',label:'Profile Info',icon:FiUser},{id:'password',label:'Change Password',icon:FiLock}].map(t=>(
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={clsx('tab-item flex items-center gap-2', tab===t.id && 'active')}>
+            <t.icon size={13}/>{t.label}
           </button>
         ))}
       </div>
 
-      {activeTab === 'profile' && (
+      {tab==='profile' && (
         <div className="card">
-          <form onSubmit={handleProfile(onProfileSave)} className="space-y-4">
+          <form onSubmit={hP(saveProfile)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="form-group col-span-2">
                 <label className="label">Full Name</label>
-                <input {...regProfile('full_name')} className="input" />
+                <input {...rP('full_name')} className="input"/>
               </div>
               <div className="form-group">
                 <label className="label">Email</label>
-                <input value={user?.email} disabled className="input bg-coal-50 text-coal-400" />
+                <input value={user?.email} disabled className="input opacity-50 cursor-not-allowed"/>
               </div>
               <div className="form-group">
                 <label className="label">Phone</label>
-                <input {...regProfile('phone')} className="input" />
+                <input {...rP('phone')} className="input"/>
               </div>
               <div className="form-group">
                 <label className="label">Designation</label>
-                <input {...regProfile('designation')} className="input" />
+                <input {...rP('designation')} className="input"/>
               </div>
               <div className="form-group">
                 <label className="label">Department</label>
-                <input {...regProfile('department')} className="input" />
+                <input {...rP('department')} className="input"/>
               </div>
             </div>
-            <div className="pt-2">
-              <p className="text-xs text-coal-400 mb-3">Last login: {formatDate(user?.last_login) || 'N/A'}</p>
-              <button type="submit" disabled={ps} className="btn-primary"><FiSave size={16} />{ps ? 'Saving...' : 'Save Profile'}</button>
+            <div className="flex justify-end pt-2 border-t border-coal-700/50">
+              <button type="submit" disabled={psub} className="btn-primary">
+                <FiSave size={15}/> {psub ? 'Saving…' : 'Save Profile'}
+              </button>
             </div>
           </form>
         </div>
       )}
 
-      {activeTab === 'password' && (
+      {tab==='password' && (
         <div className="card">
-          <form onSubmit={handlePwd(onPasswordChange)} className="space-y-4">
+          <div className="flex items-center gap-2 mb-5 p-3 rounded-xl bg-amber-500/8 border border-amber-500/20">
+            <FiShield size={14} className="text-amber-400"/>
+            <p className="text-xs text-amber-400">Use a strong password with at least 8 characters, numbers and symbols.</p>
+          </div>
+          <form onSubmit={hW(changePassword)} className="space-y-4">
             <div className="form-group">
               <label className="label">Current Password *</label>
-              <input type="password" {...regPwd('current_password', { required: true })} className="input" />
+              <input type="password" {...rW('current_password',{required:true})} className="input"/>
             </div>
             <div className="form-group">
               <label className="label">New Password *</label>
-              <input type="password" {...regPwd('new_password', { required: true, minLength: 8 })} className="input" />
+              <input type="password" {...rW('new_password',{required:true,minLength:8})} className="input"/>
             </div>
             <div className="form-group">
               <label className="label">Confirm New Password *</label>
-              <input type="password" {...regPwd('confirm_password', { required: true })} className="input" />
+              <input type="password" {...rW('confirm_password',{required:true})} className="input"/>
             </div>
-            <button type="submit" disabled={pwds} className="btn-primary"><FiLock size={16} />{pwds ? 'Changing...' : 'Change Password'}</button>
+            <div className="flex justify-end pt-2 border-t border-coal-700/50">
+              <button type="submit" disabled={pwsub} className="btn-primary">
+                <FiLock size={15}/> {pwsub ? 'Changing…' : 'Change Password'}
+              </button>
+            </div>
           </form>
         </div>
       )}
