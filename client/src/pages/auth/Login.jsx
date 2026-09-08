@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import useAuthStore from '../../store/authStore';
+import { authApi } from '../../services/api';
 import toast from 'react-hot-toast';
 
 /* ── icon SVGs inlined so we avoid any import issues ─────────────── */
@@ -102,7 +103,6 @@ export default function Login() {
     if (!unverifiedEmail) return;
     setResending(true);
     try {
-      const { authApi } = await import('../../services/api');
       const res = await authApi.resendVerification({ email: unverifiedEmail });
       toast.success(res.message || 'Verification email resent — check your inbox!');
     } catch { toast.error('Could not resend. Please try again.'); }
