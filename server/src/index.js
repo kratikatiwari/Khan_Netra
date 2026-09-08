@@ -17,9 +17,24 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const httpServer = createServer(app);
 
+// ── Allowed origins (multi-origin CORS for production + dev) ─────────────────
+// ALLOWED_ORIGINS = comma-separated list, e.g.:
+//   https://khannettra.vercel.app,https://khannetra.vercel.app,http://localhost:3000
+// Falls back to CLIENT_URL, then localhost for dev.
+const _rawOrigins = process.env.ALLOWED_ORIGINS || process.env.CLIENT_URL || 'http://localhost:3000';
+const _allowedOrigins = _rawOrigins.split(',').map(o => o.trim()).filter(Boolean);
+
+const corsOriginFn = (origin, callback) => {
+  // Allow requests with no origin (curl, Postman, server-to-server)
+  if (!origin) return callback(null, true);
+  if (_allowedOrigins.includes(origin)) return callback(null, true);
+  console.warn(`[CORS] Blocked origin: ${origin}`);
+  return callback(new Error(`CORS: origin ${origin} not allowed`));
+};
+
 // Socket.IO for real-time notifications
 const io = new Server(httpServer, {
-  cors: { origin: process.env.CLIENT_URL || 'http://localhost:3000', methods: ['GET', 'POST'] }
+  cors: { origin: corsOriginFn, methods: ['GET', 'POST'], credentials: true }
 });
 
 io.on('connection', (socket) => {
@@ -32,7 +47,7 @@ app.set('socketio', io);
 // Security middleware
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: corsOriginFn,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
