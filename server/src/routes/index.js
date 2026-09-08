@@ -19,6 +19,7 @@ router.use('/field-reports',require('./fieldReportRoutes'));
 router.use('/deadlines',    require('./deadlineRoutes'));
 router.use('/risk',         require('./riskDashboardRoutes'));
 router.use('/ocr',          require('./ocrRoutes'));
+router.use('/disaster',     require('./disasterRoutes'));
 
 router.get('/health', (req, res) => {
   res.json({ success: true, message: 'KhanNetra API is running', timestamp: new Date(), version: '1.0.0' });

@@ -1,7 +1,15 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
-const API_BASE = '/api/v1';
+/**
+ * API base URL strategy:
+ *   Dev:        Vite proxy forwards /api/v1 → http://localhost:5000/api/v1
+ *               (set in vite.config.js — no CORS issue, no hardcoded IPs)
+ *   Production: If API and frontend share the same origin, keep '/api/v1'.
+ *               If API is on a different origin, set in client/.env.production:
+ *                 VITE_API_URL=https://api.khannetra.yourdomain.in/api/v1
+ */
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -18,25 +26,41 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res.data,
   (err) => {
-    const msg = err.response?.data?.message || err.message || 'An error occurred';
-    if (err.response?.status === 401) {
+    const status = err.response?.status;
+    const msg    = err.response?.data?.message || err.message || 'An error occurred';
+    const url    = err.config?.url || '';
+
+    // Auth routes handle their own errors — don't double-toast
+    const isAuthRoute = url.includes('/auth/');
+
+    if (status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      if (!window.location.pathname.includes('/login')) window.location.href = '/login';
-    } else if (err.response?.status !== 404) {
-      toast.error(msg);
+      // Only redirect if NOT on an auth page and NOT an auth API call
+      if (!isAuthRoute && !window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    } else if (status === 429) {
+      // Rate limit — show once, not doubled
+      if (!isAuthRoute) toast.error('Too many requests. Please try again later.');
+    } else if (status && status !== 404 && status !== 400 && status !== 403 && status !== 409) {
+      // Only show toast for unexpected server errors; let auth/form components handle 400/403/409
+      if (!isAuthRoute) toast.error(msg);
     }
+
     return Promise.reject(err);
   }
 );
 
 export const authApi = {
-  login:          (d) => api.post('/auth/login', d),
-  register:       (d) => api.post('/auth/register', d),
-  getMe:          ()  => api.get('/auth/me'),
-  refresh:        (d) => api.post('/auth/refresh', d),
-  updateProfile:  (d) => api.put('/auth/profile', d),
-  changePassword: (d) => api.put('/auth/change-password', d),
+  login:               (d) => api.post('/auth/login', d),
+  register:            (d) => api.post('/auth/register', d),
+  verifyEmail:         (token) => api.get('/auth/verify-email', { params: { token } }),
+  resendVerification:  (d) => api.post('/auth/resend-verification', d),
+  getMe:               ()  => api.get('/auth/me'),
+  refresh:             (d) => api.post('/auth/refresh', d),
+  updateProfile:       (d) => api.put('/auth/profile', d),
+  changePassword:      (d) => api.put('/auth/change-password', d),
 };
 
 export const minesApi = {
@@ -206,4 +230,16 @@ export const ocrApi = {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 60000,
   }),
+};
+
+// ── Disaster Alert System ─────────────────────────────────────────────────────
+export const disasterApi = {
+  getActive:    ()         => api.get('/disaster/active'),
+  getAlerts:    (p)        => api.get('/disaster/alerts',  { params: p }),
+  getHistory:   (p)        => api.get('/disaster/history', { params: p }),
+  getStats:     ()         => api.get('/disaster/stats'),
+  acknowledge:  (id)       => api.post(`/disaster/acknowledge/${id}`),
+  resolve:      (id, data) => api.post(`/disaster/resolve/${id}`, data),
+  createTest:   ()         => api.post('/disaster/test'),
+  pollNow:      ()         => api.post('/disaster/poll'),
 };

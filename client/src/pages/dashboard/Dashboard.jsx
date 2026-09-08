@@ -4,14 +4,14 @@ import {
   FiMapPin, FiAlertTriangle, FiAlertCircle, FiUsers,
   FiArrowRight, FiBell, FiFileText, FiActivity,
   FiCpu, FiShield, FiWind, FiTrendingUp, FiClock,
-  FiUserCheck, FiNavigation, FiZap,
+  FiUserCheck, FiNavigation, FiZap, FiRadio,
 } from 'react-icons/fi';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, RadarChart, Radar, PolarGrid,
   PolarAngleAxis,
 } from 'recharts';
-import { analyticsApi, deadlinesApi, contractorsApi, fieldReportsApi, riskApi } from '../../services/api';
+import { analyticsApi, deadlinesApi, contractorsApi, fieldReportsApi, riskApi, disasterApi } from '../../services/api';
 import { formatDate, formatNumber, scoreToColor, timeAgo } from '../../utils/helpers';
 import Badge from '../../components/ui/Badge';
 import ScoreBar from '../../components/ui/ScoreBar';
@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [upcomingD,    setUpcomingD]    = useState([]);
   const [highRisk,     setHighRisk]     = useState([]);
   const [fieldAlerts,  setFieldAlerts]  = useState([]);
+  const [disasterAlerts, setDisasterAlerts] = useState([]);
   const [loading,      setLoading]      = useState(true);
 
   useEffect(() => {
@@ -43,14 +44,16 @@ export default function Dashboard() {
       deadlinesApi.getUpcoming({ days: 14 }).catch(()=>({data:[]})),
       riskApi.getHighRisk().catch(()=>({data:{high_risk_mines:[]}})),
       fieldReportsApi.getAll({ severity:'critical', status:'open', limit:5 }).catch(()=>({data:[]})),
+      disasterApi.getActive().catch(()=>({data:[], summary:{}})),
     ])
-      .then(([d, t, ov, up, hr, fr]) => {
+      .then(([d, t, ov, up, hr, fr, ds]) => {
         setData(d.data);
         setTrend(t.data);
         setOverdueD(ov.data || []);
         setUpcomingD(up.data || []);
         setHighRisk((hr.data?.high_risk_mines || []).slice(0, 4));
         setFieldAlerts(fr.data || []);
+        setDisasterAlerts((ds.data || []).filter(a => ['CRITICAL','HIGH'].includes(a.severity)).slice(0, 3));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -130,19 +133,144 @@ export default function Dashboard() {
   return (
     <div className="space-y-5">
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="page-title">Command Center</h1>
-          <p className="page-subtitle">
-            Welcome back, <span className="text-amber-400 font-semibold">{user?.full_name?.split(' ')[0]}</span>. Here's your live compliance overview.
-          </p>
-        </div>
-        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-coal-800/60 border border-coal-700/50">
-          <span className="status-dot-green" />
-          <span className="text-[11px] text-coal-500">{new Date().toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric' })}</span>
+      {/* ════════════════════════════════════════════════════════
+          HERO — mine-dashboard.jpeg cinematic banner
+      ════════════════════════════════════════════════════════ */}
+      <div
+        style={{
+          position: 'relative',
+          width: '100%',
+          height: '320px',
+          borderRadius: '20px',
+          overflow: 'hidden',
+          boxShadow: '0 8px 40px rgba(0,0,0,.55)',
+        }}
+      >
+        {/* ── Mine image ── */}
+        <img
+          src="/assets/mine-dashboard.jpeg"
+          alt="KhanNetra — Open-pit coal mine monitoring"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'center center',
+            display: 'block',
+          }}
+          onError={e => {
+            // Graceful fallback — hide img, show gradient background
+            e.currentTarget.style.display = 'none';
+          }}
+        />
+
+        {/* ── Dark navy overlay — keeps image visible, ensures text readability ── */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'linear-gradient(135deg,rgba(6,14,28,.72) 0%,rgba(6,14,28,.38) 50%,rgba(6,14,28,.65) 100%)',
+        }} />
+        {/* Bottom gradient for card row transition */}
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%',
+          background: 'linear-gradient(to top,rgba(6,14,28,.90) 0%,transparent 100%)',
+        }} />
+
+        {/* ── Hero text ── */}
+        <div style={{
+          position: 'absolute', inset: 0, padding: '28px 32px',
+          display: 'flex', flexDirection: 'column', justifyContent: 'space-between', zIndex: 10,
+        }}>
+          {/* Top row */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+            <div>
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: '7px',
+                padding: '4px 12px', borderRadius: '999px', marginBottom: '10px',
+                background: 'rgba(245,158,11,.14)', border: '1px solid rgba(245,158,11,.32)',
+              }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
+                <span style={{ color: '#fbbf24', fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em' }}>
+                  Live Operations · DGMS Monitoring
+                </span>
+              </div>
+              <h2 style={{ color: '#f1f5f9', fontWeight: 900, fontSize: 'clamp(1.4rem,2.5vw,2rem)', lineHeight: 1.1, margin: 0 }}>
+                Command Center<br/>
+                <span style={{ color: '#f59e0b' }}>Coal Mine Governance</span>
+              </h2>
+              <p style={{ color: 'rgba(255,255,255,.55)', fontSize: '13.5px', marginTop: '8px', lineHeight: 1.5 }}>
+                AI-powered compliance monitoring and smart governance for India's coal mining sector.
+              </p>
+            </div>
+            {/* Date badge */}
+            <div style={{
+              padding: '8px 14px', borderRadius: '12px', textAlign: 'right', flexShrink: 0,
+              background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.14)',
+              backdropFilter: 'blur(8px)',
+            }}>
+              <p style={{ color: 'rgba(255,255,255,.45)', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Today</p>
+              <p style={{ color: '#f1f5f9', fontSize: '13px', fontWeight: 700, margin: '3px 0 0' }}>
+                {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+            </div>
+          </div>
+
+          {/* Bottom row — welcome + mini stats */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <p style={{ color: 'rgba(255,255,255,.65)', fontSize: '14px', margin: 0 }}>
+              Welcome back, <strong style={{ color: '#fbbf24' }}>{user?.full_name?.split(' ')[0]}</strong>
+              {user?.designation && <span style={{ color: 'rgba(255,255,255,.38)' }}> · {user.designation}</span>}
+            </p>
+            {/* Quick mini stats row */}
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              {[
+                { v: mines.total || 0,          l: 'Mines',       c: '#60a5fa' },
+                { v: violations.open || 0,      l: 'Open Viol.',  c: parseInt(violations.critical) > 0 ? '#ef4444' : '#f59e0b' },
+                { v: incidents.open || 0,       l: 'Incidents',   c: parseInt(incidents.fatal) > 0 ? '#ef4444' : '#f97316' },
+                { v: `${parseFloat(scores.avg_compliance || 0).toFixed(0)}%`, l: 'Compliance', c: '#22c55e' },
+              ].map(s => (
+                <div key={s.l} style={{
+                  padding: '7px 14px', borderRadius: '10px', textAlign: 'center',
+                  background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.16)',
+                  backdropFilter: 'blur(10px)',
+                }}>
+                  <p style={{ color: s.c, fontWeight: 900, fontSize: '18px', margin: 0, lineHeight: 1 }}>{s.v}</p>
+                  <p style={{ color: 'rgba(255,255,255,.42)', fontSize: '10px', margin: '3px 0 0' }}>{s.l}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* ── Disaster Alert Banner (shows only when HIGH/CRITICAL alerts active) ── */}
+      {disasterAlerts.length > 0 && (
+        <div style={{
+          borderRadius:'16px', padding:'14px 18px',
+          background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.35)',
+          display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', flexWrap:'wrap',
+        }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px', minWidth:0 }}>
+            <FiRadio size={18} style={{ color:'#f87171', flexShrink:0, animation:'pulse 1s infinite' }}/>
+            <div>
+              <span style={{ color:'#f87171', fontWeight:800, fontSize:'13px' }}>
+                🚨 {disasterAlerts.length} Active Disaster Alert{disasterAlerts.length>1?'s':''} —&nbsp;
+              </span>
+              {disasterAlerts.slice(0,2).map((a,i) => (
+                <span key={a.id} style={{ color:'rgba(255,255,255,.65)', fontSize:'12px' }}>
+                  {a.severity}: {a.alert_type}{i < disasterAlerts.slice(0,2).length-1 ? ' · ' : ''}
+                </span>
+              ))}
+            </div>
+          </div>
+          <Link to="/disaster"
+            style={{ padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:700,
+                     background:'rgba(239,68,68,.2)', color:'#f87171', border:'1px solid rgba(239,68,68,.4)',
+                     textDecoration:'none', flexShrink:0, whiteSpace:'nowrap' }}>
+            View Alerts →
+          </Link>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

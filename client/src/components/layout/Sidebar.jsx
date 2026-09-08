@@ -5,6 +5,7 @@ import {
   FiUsers, FiBook, FiActivity, FiBookOpen, FiCpu, FiBell,
   FiChevronLeft, FiChevronRight, FiCamera,
   FiTrendingUp, FiNavigation, FiClock, FiUserCheck, FiLayers, FiSearch,
+  FiRadio,
 } from 'react-icons/fi';
 import useAuthStore from '../../store/authStore';
 import clsx from 'clsx';
@@ -58,9 +59,10 @@ const NAV = [
   {
     title: 'Administration',
     links: [
-      { to: '/notifications', icon: FiBell,   label: 'Notifications'    },
-      { to: '/audit',         icon: FiBook,   label: 'Audit Trail',     roles: ['admin','government_officer','inspector'] },
-      { to: '/users',         icon: FiUsers,  label: 'User Management', roles: ['admin','government_officer'] },
+      { to: '/notifications', icon: FiBell,    label: 'Notifications'    },
+      { to: '/disaster',      icon: FiRadio,   label: 'Disaster Alerts'  },
+      { to: '/audit',         icon: FiBook,    label: 'Audit Trail',     roles: ['admin','government_officer','inspector'] },
+      { to: '/users',         icon: FiUsers,   label: 'User Management', roles: ['admin','government_officer'] },
     ],
   },
 ];
@@ -96,10 +98,11 @@ export default function Sidebar({ collapsed, onToggle }) {
       )}>
         {/* Logo mark */}
         <div className="relative shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center shadow-[0_0_16px_rgba(245,158,11,.4)]">
-            <span className="text-coal-950 font-black text-sm leading-none">KN</span>
-          </div>
-          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-success-500 border-2 border-coal-900" />
+          <img
+            src="/khannetra-logo.svg"
+            alt="KhanNetra"
+            style={{ width:'40px', height:'40px', filter:'drop-shadow(0 0 8px rgba(245,158,11,.5))' }}
+          />
         </div>
 
         {!collapsed && (

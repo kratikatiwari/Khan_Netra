@@ -4,6 +4,7 @@ import Layout from './components/layout/Layout';
 
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
+import VerifyEmail from './pages/auth/VerifyEmail';
 import Dashboard from './pages/dashboard/Dashboard';
 import Mines from './pages/mines/Mines';
 import MineDetail from './pages/mines/MineDetail';
@@ -25,6 +26,7 @@ import RiskDashboard from './pages/risk/RiskDashboard';
 import OCRExtract from './pages/ocr/OCRExtract';
 import GISMap from './pages/gis/GISMap';
 import Notifications from './pages/notifications/Notifications';
+import DisasterAlerts from './pages/disaster/DisasterAlerts';
 import AuditTrail from './pages/audit/AuditTrail';
 import Reports from './pages/reports/Reports';
 import Users from './pages/users/Users';
@@ -41,8 +43,9 @@ export default function App() {
   const { isAuthenticated } = useAuthStore();
   return (
     <Routes>
-      <Route path="/login"    element={isAuthenticated ? <Navigate to="/dashboard" /> : <Login />} />
-      <Route path="/register" element={isAuthenticated ? <Navigate to="/dashboard" /> : <Register />} />
+      <Route path="/login"        element={isAuthenticated ? <Navigate to="/dashboard" /> : <Login />} />
+      <Route path="/register"     element={isAuthenticated ? <Navigate to="/dashboard" /> : <Register />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
 
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route path="/"                    element={<Navigate to="/dashboard" />} />
@@ -67,6 +70,7 @@ export default function App() {
         <Route path="/ocr"                 element={<OCRExtract />} />
         <Route path="/gis"                 element={<GISMap />} />
         <Route path="/notifications"       element={<Notifications />} />
+        <Route path="/disaster"            element={<DisasterAlerts />} />
         <Route path="/audit"               element={<ProtectedRoute roles={['admin','government_officer','inspector']}><AuditTrail /></ProtectedRoute>} />
         <Route path="/reports"             element={<Reports />} />
         <Route path="/users"               element={<ProtectedRoute roles={['admin','government_officer']}><Users /></ProtectedRoute>} />

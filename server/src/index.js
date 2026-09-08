@@ -64,6 +64,15 @@ app.use(notFound);
 app.use(errorHandler);
 
 // Scheduled jobs
+// Disaster alert polling — every 10 minutes
+cron.schedule('*/10 * * * *', async () => {
+  try {
+    const { pollAllSources } = require('./services/disasterService');
+    await pollAllSources();
+  } catch (e) { console.error('[Disaster cron]', e.message); }
+});
+
+// Compliance deadline escalation — every 6 hours
 // Daily document expiry check
 cron.schedule('0 9 * * *', async () => {
   try {

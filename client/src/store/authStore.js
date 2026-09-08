@@ -18,7 +18,16 @@ const useAuthStore = create((set, get) => ({
       return { success: true };
     } catch (err) {
       set({ loading: false });
-      return { success: false, message: err.response?.data?.message || 'Login failed' };
+      const data   = err.response?.data || {};
+      const status = err.response?.status;
+      return {
+        success: false,
+        message: status === 429
+          ? 'Too many login attempts. Please wait 15 minutes and try again.'
+          : (data.message || 'Sign in failed.'),
+        code:   status === 429 ? 'RATE_LIMITED' : (data.code || null),
+        status,
+      };
     }
   },
 
