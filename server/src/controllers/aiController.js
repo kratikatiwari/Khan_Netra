@@ -98,11 +98,12 @@ async function callGemini(messages) {
   const apiKey = process.env.GEMINI_API_KEY;
 
   // Ordered list of models to try (most capable first)
+  // Model names from Gemini API deprecation notices (Sep 2026)
   const MODELS = [
-    'gemini-2.5-flash',
     'gemini-3.6-flash',
-    'gemini-flash-latest',
+    'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
+    'gemini-3.5-flash-lite',
   ];
 
   // Convert OpenAI-style messages to Gemini format

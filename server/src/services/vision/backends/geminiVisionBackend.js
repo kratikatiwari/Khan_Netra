@@ -1,95 +1,104 @@
 /**
  * KhanNetra PPE Vision — Gemini Vision Backend
  *
- * Uses Google Gemini 1.5 Flash Vision to analyse an image and
- * identify mine-worker PPE.  Returns a normalised DetectionResult.
+ * Uses Google Gemini Vision to analyse mine-worker images for PPE compliance.
+ * Returns a normalised DetectionResult.
  *
- * To swap this out for a local YOLO model, set MODEL_BACKEND=yolo_onnx
- * in your .env and place the model at YOLO_MODEL_PATH.
+ * To swap for a local YOLO model: set MODEL_BACKEND=yolo_onnx in .env.
  */
 
 'use strict';
 
-const https  = require('https');
+const https = require('https');
 const { PPE_ITEMS } = require('../ppeConfig');
 
-const MODEL_NAME    = 'gemini-3.6-flash';
-const MODEL_VERSION = '3.6-flash';
+/* ── Model fallback list (newest capable → stable) ───────────────────────── */
+// Order: try most capable first, fall back to stable if unavailable.
+// Model names come from Gemini's own deprecation messages (Sep 2026).
+const FALLBACK_MODELS = [
+  'gemini-3.6-flash',       // latest recommended by Gemini API deprecation notice
+  'gemini-2.5-flash',       // still available via v1beta
+  'gemini-2.5-flash-lite',  // lite variant
+  'gemini-3.5-flash-lite',  // recommended replacement for 2.0-flash-lite
+];
 
-/* ── Prompt ───────────────────────────────────────────────────────────────── */
-const buildPrompt = () => `
-You are an AI safety compliance system for Indian coal mines, built for the Directorate General of Mines Safety (DGMS).
+/* ── System instruction ───────────────────────────────────────────────────── */
+const SYSTEM_INSTRUCTION = `You are an AI safety compliance system for Indian coal mines, built for the Directorate General of Mines Safety (DGMS). You analyse images and return ONLY valid JSON with no extra text.`;
 
-Analyse the provided image and detect all mine workers and their Personal Protective Equipment (PPE).
+/* ── Detection prompt ─────────────────────────────────────────────────────── */
+const buildPrompt = () => `Analyse the image and identify all mine workers and their PPE (Personal Protective Equipment).
 
-For EACH distinct worker visible in the image, output a JSON block.
-
-PPE items to detect (use EXACTLY these IDs):
-- helmet           → hard hat / mining helmet
-- safety_vest      → high-visibility vest or reflective jacket
-- safety_boots     → safety boots / gumboots (may be partially visible)
-- goggles          → safety goggles / face shield / eye protection
-- gloves           → safety gloves (any colour)
-- ear_protection   → earmuffs or earplugs
-- respiratory_mask → dust mask, N95, half-face or full-face respirator
-- safety_lamp      → mine cap lamp or hand-held safety lamp
+PPE item IDs to detect (use EXACTLY these IDs, lowercase):
+  helmet            = hard hat / mining helmet
+  safety_vest       = hi-vis vest or reflective jacket
+  safety_boots      = safety boots / gumboots
+  goggles           = safety goggles / face shield / eye protection
+  gloves            = safety gloves (any colour)
+  ear_protection    = earmuffs or earplugs
+  respiratory_mask  = dust mask / N95 / respirator
+  safety_lamp       = mine cap lamp or hand-held safety lamp
 
 Rules:
-1. DO NOT identify or describe the worker's face, identity, race, gender or age.
-2. If no workers are visible, return an empty workers array.
-3. Assign a confidence score (0.0–1.0) for each PPE item you detect.
-4. Only include items you are reasonably confident (>0.40) are present.
-5. If the image is blurry, poorly lit, or the worker is partially visible, reflect this in lower confidence scores.
-6. Output ONLY valid JSON — no markdown, no explanation, no extra text.
+- DO NOT identify faces, identities, race, gender or age.
+- Return ONLY valid JSON. No markdown fences, no prose, no explanation.
+- If no workers visible, return an empty workers array.
+- Confidence scores must be 0.0–1.0.
+- Only list a PPE item in detected_ppe if confidence > 0.40.
 
-Response format (strict JSON):
+Respond with this exact JSON structure (no other text before or after):
 {
-  "scene_description": "brief 1-sentence description of the scene (no faces/identities)",
-  "lighting_quality": "good|fair|poor",
-  "worker_count": <number>,
+  "scene_description": "one sentence about the scene, no identity details",
+  "lighting_quality": "good",
+  "worker_count": 1,
   "workers": [
     {
       "worker_id": 1,
-      "position_in_frame": "left|center|right|full_frame",
-      "visibility": "full|partial|obscured",
+      "position_in_frame": "center",
+      "visibility": "full",
       "detected_ppe": ["helmet", "safety_vest"],
       "confidence_scores": {
         "helmet": 0.95,
-        "safety_vest": 0.88
+        "safety_vest": 0.88,
+        "safety_boots": 0.0,
+        "goggles": 0.0,
+        "gloves": 0.0,
+        "ear_protection": 0.0,
+        "respiratory_mask": 0.0,
+        "safety_lamp": 0.0
       }
     }
   ]
-}
-`.trim();
+}`;
 
-/* ── Gemini API call with retry ───────────────────────────────────────────── */
-const FALLBACK_MODELS = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
-
-async function callGeminiVision(imageBase64, prompt, modelIndex = 0) {
+/* ── Gemini API call ──────────────────────────────────────────────────────── */
+async function callGeminiVision(imageBase64, modelName) {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === 'your_gemini_api_key_here') {
-    throw new Error('GEMINI_API_KEY not configured');
+  if (!apiKey || apiKey.length < 10) {
+    throw Object.assign(new Error('GEMINI_API_KEY not configured in server/.env'), { status: 503 });
   }
 
-  const modelName = FALLBACK_MODELS[modelIndex] || FALLBACK_MODELS[0];
-
   const body = JSON.stringify({
+    systemInstruction: {
+      parts: [{ text: SYSTEM_INSTRUCTION }],
+    },
     contents: [{
       parts: [
-        { text: prompt },
+        { text: buildPrompt() },
         {
           inline_data: {
             mime_type: 'image/jpeg',
-            data: imageBase64,
+            data:      imageBase64,
           },
         },
       ],
     }],
     generationConfig: {
-      temperature:     0.1,
-      maxOutputTokens: 1024,
+      temperature:     0.1,    // low = more deterministic JSON output
+      maxOutputTokens: 2048,
       topP:            0.8,
       topK:            20,
+      // Ask Gemini to return JSON directly when supported
+      responseMimeType: 'application/json',
     },
     safetySettings: [
       { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_NONE' },
@@ -106,7 +115,7 @@ async function callGeminiVision(imageBase64, prompt, modelIndex = 0) {
       hostname: 'generativelanguage.googleapis.com',
       path:     apiPath,
       method:   'POST',
-      headers:  {
+      headers: {
         'Content-Type':   'application/json',
         'Content-Length': Buffer.byteLength(body),
       },
@@ -119,59 +128,121 @@ async function callGeminiVision(imageBase64, prompt, modelIndex = 0) {
         try {
           const json = JSON.parse(data);
           if (json.error) {
-            const errMsg = json.error.message || '';
-            // Retry with fallback model for availability errors
-            const isAvailability = /high demand|not found|no longer available|not supported/i.test(errMsg);
-            if (isAvailability && modelIndex < FALLBACK_MODELS.length - 1) {
-              console.log(`[PPE Vision] Model ${modelName} unavailable, trying fallback...`);
-              callGeminiVision(imageBase64, prompt, modelIndex + 1).then(resolve).catch(reject);
-              return;
-            }
-            return reject(new Error(`Gemini API error: ${errMsg}`));
+            const msg       = json.error.message || 'Unknown Gemini error';
+            const code      = json.error.code || 0;
+            const retryable = /not found|not supported|no longer available|high demand|quota|overload/i.test(msg) || code === 404 || code === 429 || code === 503;
+            return reject(Object.assign(new Error(msg), { retryable, geminiCode: code }));
           }
-          // Attach which model actually responded
           json._model_used = modelName;
           resolve(json);
         } catch (e) {
-          reject(new Error(`Failed to parse Gemini response: ${e.message}`));
+          reject(new Error(`Failed to parse Gemini API response: ${e.message}`));
         }
       });
     });
+
     req.on('error', reject);
-    req.setTimeout(28000, () => { req.destroy(); reject(new Error('Gemini API timeout')); });
+    req.setTimeout(30000, () => {
+      req.destroy();
+      reject(Object.assign(new Error('Gemini API request timed out'), { retryable: true }));
+    });
     req.write(body);
     req.end();
   });
 }
 
-/* ── Parse Gemini text output into structured result ─────────────────────── */
-function parseGeminiResponse(text) {
-  // Strip any markdown code fences if present
-  let clean = text.trim();
-  clean = clean.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim();
+/* ── Call with automatic model fallback ──────────────────────────────────── */
+async function callWithFallback(imageBase64) {
+  let lastError = null;
 
-  let parsed;
-  try {
-    parsed = JSON.parse(clean);
-  } catch {
-    // Try extracting JSON object from surrounding text
-    const match = clean.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('No valid JSON found in model response');
-    parsed = JSON.parse(match[0]);
+  for (const modelName of FALLBACK_MODELS) {
+    try {
+      console.log(`[PPE Vision] Trying model: ${modelName}`);
+      const result = await callGeminiVision(imageBase64, modelName);
+      console.log(`[PPE Vision] Success with model: ${modelName}`);
+      return result;
+    } catch (err) {
+      lastError = err;
+      if (err.retryable) {
+        console.log(`[PPE Vision] Model ${modelName} unavailable (${err.message}), trying next...`);
+        continue;
+      }
+      // Non-retryable error (bad API key, billing, etc.) — fail immediately
+      throw err;
+    }
   }
-  return parsed;
+
+  // All models exhausted
+  throw Object.assign(
+    new Error(`Vision service unavailable. All Gemini models failed. Last error: ${lastError?.message}`),
+    { status: 503 }
+  );
+}
+
+/* ── Robust JSON extractor ────────────────────────────────────────────────── */
+/**
+ * Handles all the ways Gemini might wrap its response:
+ *  1. Pure JSON (ideal, what responseMimeType: 'application/json' gives)
+ *  2. ```json ... ``` markdown fence
+ *  3. ``` ... ``` fence
+ *  4. JSON embedded inside prose ("Here is the result: {...}")
+ *  5. JSON with trailing commentary
+ */
+function extractJSON(raw) {
+  if (!raw || typeof raw !== 'string') {
+    throw new Error('Empty response from Gemini Vision — no text returned');
+  }
+
+  let text = raw.trim();
+
+  // 1. Direct parse (handles responseMimeType=application/json path)
+  try {
+    return JSON.parse(text);
+  } catch { /* fall through */ }
+
+  // 2. Strip markdown code fences  ```json ... ``` or ``` ... ```
+  const fenceMatch = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenceMatch) {
+    try { return JSON.parse(fenceMatch[1]); } catch { /* fall through */ }
+  }
+
+  // 3. Find the outermost { ... } block robustly (handles leading/trailing prose)
+  const firstBrace = text.indexOf('{');
+  const lastBrace  = text.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = text.slice(firstBrace, lastBrace + 1);
+    try { return JSON.parse(candidate); } catch { /* fall through */ }
+  }
+
+  // 4. Try to find any JSON-like fragment with a regex (last resort)
+  const regexMatch = text.match(/\{[\s\S]+\}/);
+  if (regexMatch) {
+    try { return JSON.parse(regexMatch[0]); } catch { /* fall through */ }
+  }
+
+  // Nothing worked — throw a useful error with a snippet of what was received
+  const snippet = text.slice(0, 200).replace(/\n/g, ' ');
+  throw new Error(
+    `Could not parse Gemini Vision response as JSON. ` +
+    `Model may have returned plain text instead of JSON. ` +
+    `First 200 chars: "${snippet}"`
+  );
 }
 
 /* ── Normalise a single worker record ────────────────────────────────────── */
 function normaliseWorker(raw, workerId) {
-  const validIds      = Object.keys(PPE_ITEMS);
-  const detectedPpe   = (raw.detected_ppe || []).filter(id => validIds.includes(id));
-  const rawScores     = raw.confidence_scores || {};
-  const confidenceScores = {};
+  const validIds  = Object.keys(PPE_ITEMS);
+  const rawScores = raw.confidence_scores || {};
 
+  // Only keep IDs that are in our PPE catalogue
+  const detectedPpe = (raw.detected_ppe || []).filter(id => validIds.includes(id));
+
+  // Build a complete scores map for every PPE item
+  const confidenceScores = {};
   for (const id of validIds) {
+    const raw_score = rawScores[id];
     confidenceScores[id] = detectedPpe.includes(id)
-      ? Math.round(Math.min(1, Math.max(0, parseFloat(rawScores[id] || 0.7))) * 100) / 100
+      ? Math.round(Math.min(1, Math.max(0, parseFloat(raw_score) || 0.7)) * 100) / 100
       : 0;
   }
 
@@ -187,37 +258,82 @@ function normaliseWorker(raw, workerId) {
 
 /* ── Main export ──────────────────────────────────────────────────────────── */
 /**
- * @param {Buffer} imageBuffer  – JPEG buffer (already preprocessed)
+ * Detect PPE in an image buffer.
+ * @param {Buffer} imageBuffer  – JPEG buffer (pre-processed by detectionEngine)
  * @param {string} mimeType     – always 'image/jpeg' after preprocessing
  * @param {object} options      – { mine_type, min_confidence }
  * @returns {Promise<DetectionResult>}
  */
 async function detect(imageBuffer, mimeType, options = {}) {
   const imageBase64 = imageBuffer.toString('base64');
-  const prompt      = buildPrompt();
 
-  const geminiResponse = await callGeminiVision(imageBase64, prompt);
-  const actualModel    = geminiResponse._model_used || MODEL_NAME;
+  // Call Gemini with automatic model fallback
+  let geminiResponse;
+  try {
+    geminiResponse = await callWithFallback(imageBase64);
+  } catch (err) {
+    // Surface a clean, user-facing message for service unavailability
+    if (err.status === 503 || /unavailable|timeout|all gemini/i.test(err.message)) {
+      throw Object.assign(
+        new Error('Vision service unavailable. Please check your GEMINI_API_KEY and try again.'),
+        { status: 503 }
+      );
+    }
+    throw err;
+  }
 
-  const candidate = geminiResponse?.candidates?.[0];
-  if (!candidate) throw new Error('No candidate returned from Gemini');
+  const actualModel = geminiResponse._model_used || FALLBACK_MODELS[0];
+  const candidate   = geminiResponse?.candidates?.[0];
 
-  const finishReason = candidate.finishReason;
-  if (finishReason === 'SAFETY') throw new Error('Image rejected by safety filters');
+  if (!candidate) {
+    console.error('[PPE Vision] No candidate in Gemini response:', JSON.stringify(geminiResponse).slice(0, 300));
+    throw new Error('Vision service returned no result. The image may be blocked by safety filters.');
+  }
+
+  // Blocked by safety filters?
+  if (candidate.finishReason === 'SAFETY') {
+    throw Object.assign(
+      new Error('This image was blocked by content safety filters. Please use a clear, appropriate mine site photo.'),
+      { status: 422 }
+    );
+  }
 
   const rawText = candidate?.content?.parts?.[0]?.text || '';
-  if (!rawText) throw new Error('Empty response from Gemini Vision');
+  console.log(`[PPE Vision] Model: ${actualModel} | Response length: ${rawText.length} chars`);
 
-  const parsed = parseGeminiResponse(rawText);
+  // Parse — robust extraction handles all Gemini output formats
+  let parsed;
+  try {
+    parsed = extractJSON(rawText);
+  } catch (parseErr) {
+    console.error('[PPE Vision] JSON parse failed:', parseErr.message);
+    console.error('[PPE Vision] Raw text (first 500):', rawText.slice(0, 500));
+    // Graceful fallback: treat as "no workers detected" rather than crashing
+    parsed = {
+      scene_description: 'Unable to parse detailed analysis.',
+      lighting_quality:  'unknown',
+      worker_count:      0,
+      workers:           [],
+    };
+  }
 
-  const workers = (parsed.workers || []).map((w, i) => normaliseWorker(w, i + 1));
+  // Normalise each worker
+  const minConf = parseFloat(options.min_confidence) || 0.40;
+  const workers = (parsed.workers || []).map((w, i) => {
+    const normalised = normaliseWorker(w, i + 1);
+    // Apply min_confidence threshold — remove items below threshold
+    normalised.detected_ppe = normalised.detected_ppe.filter(
+      id => (normalised.confidence_scores[id] || 0) >= minConf
+    );
+    return normalised;
+  });
 
   return {
     workers,
     scene_info: {
-      description:     parsed.scene_description  || 'Mine site image',
-      lighting:        parsed.lighting_quality   || 'unknown',
-      worker_count:    parsed.worker_count       ?? workers.length,
+      description:  parsed.scene_description || 'Mine site image',
+      lighting:     parsed.lighting_quality  || 'unknown',
+      worker_count: parsed.worker_count      ?? workers.length,
     },
     model_info: {
       name:    actualModel,
