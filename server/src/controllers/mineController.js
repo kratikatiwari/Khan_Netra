@@ -100,6 +100,33 @@ exports.deleteMine = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+exports.searchMines = async (req, res, next) => {
+  try {
+    const { q = '', limit = 8 } = req.query;
+    if (!q.trim()) return res.json({ success: true, data: [] });
+
+    // Mine-manager sees only their own mine
+    let conds = [`(m.name LIKE ? OR m.mine_id LIKE ? OR m.owner_company LIKE ? OR m.location_name LIKE ?)`];
+    let params = [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`];
+
+    if (req.user.role === 'mine_manager' && req.user.mine_id) {
+      conds.push(`m.id = ?`); params.push(req.user.mine_id);
+    }
+
+    const rows = (await query(
+      `SELECT m.id, m.mine_id, m.name, m.state, m.district, m.type, m.status,
+              m.compliance_score, m.risk_score
+       FROM mines m
+       WHERE ${conds.join(' AND ')}
+       ORDER BY m.name ASC
+       LIMIT ?`,
+      [...params, parseInt(limit, 10)]
+    )).rows;
+
+    res.json({ success: true, data: rows });
+  } catch (err) { next(err); }
+};
+
 exports.getMineStats = async (req, res, next) => {
   try {
     const { id } = req.params;

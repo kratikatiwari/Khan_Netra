@@ -22,6 +22,10 @@ export default defineConfig(({ mode }) => {
 
     server: {
       port: 3000,
+      // strictPort: true — if port 3000 is occupied, Vite STOPS and prints an
+      // error instead of silently moving to 3001/3004/etc.
+      // This prevents the "CORS: origin not allowed" loop caused by port drift.
+      strictPort: true,
       proxy: {
         // In dev all /api calls go to the Express backend
         '/api': {

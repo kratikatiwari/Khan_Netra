@@ -1,296 +1,135 @@
 /**
  * KhanNetra Auth Controller
- * ─────────────────────────────────────────────────────────────────────────────
- * Production-ready registration → email verification → login flow.
- * - express-validator for all input sanitisation
- * - bcryptjs password hashing (cost 12)
- * - Secure single-use expiring verification tokens
- * - No credentials / tokens / secrets ever sent to frontend (except dev_verify_token when SMTP off)
- * - Email provider-agnostic wording (not "Gmail")
- * - Graceful email failure: user is registered even if email send fails
- * - JWT / refresh token flow unchanged
+ * Registration → Admin Approval → Login flow.
+ * No email/Gmail verification. Status-based access control.
+ * Statuses: PENDING | APPROVED | REJECTED | SUSPENDED
  */
 'use strict';
 
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
-const crypto  = require('crypto');
-const { v4: uuidv4 }         = require('uuid');
-const { validationResult }   = require('express-validator');
-const { query }              = require('../config/database');
-const emailService           = require('../services/emailService');
+const { v4: uuidv4 }       = require('uuid');
+const { validationResult } = require('express-validator');
+const { query }            = require('../config/database');
 
-/* ── Helpers ─────────────────────────────────────────────────────────────── */
-
+/* ── helpers ────────────────────────────────────────────────────────────── */
 const makeTokens = (user) => {
   const payload = { id: user.id, email: user.email, role: user.role };
   return {
     token:        jwt.sign(payload, process.env.JWT_SECRET,
                     { expiresIn: process.env.JWT_EXPIRES_IN         || '24h' }),
     refreshToken: jwt.sign(payload, process.env.JWT_REFRESH_SECRET,
-                    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }),
+                    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'  }),
   };
 };
 
-/** 96-char hex token — 48 bytes of CSPRNG entropy */
-const makeVerifyToken = () => crypto.randomBytes(48).toString('hex');
-
-/** ISO string 24 h from now */
-const tokenExpiry = () => new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-/** Pull express-validator errors into a single string */
 const validationErrors = (req) => {
-  const result = validationResult(req);
-  if (result.isEmpty()) return null;
-  return result.array().map(e => e.msg).join(' ');
+  const r = validationResult(req);
+  return r.isEmpty() ? null : r.array().map(e => e.msg).join(' ');
 };
 
 const ALLOWED_ROLES = [
-  'admin', 'government_officer', 'mine_manager',
-  'inspector', 'safety_officer', 'environment_officer',
+  'admin', 'government_officer', 'mine_manager', 'inspector',
+  'safety_officer', 'environment_officer', 'contractor', 'prototype_tester',
+  'mining_engineer', 'corporate_management',
 ];
 
 /* ════════════════════════════════════════════════════════════════════════════
-   REGISTER
+   REGISTER  —  POST /auth/register
+   Creates account with status = PENDING (unless first admin).
 ════════════════════════════════════════════════════════════════════════════ */
 exports.register = async (req, res, next) => {
   try {
-    /* ── Input validation (express-validator rules applied in authRoutes.js) */
     const valErr = validationErrors(req);
     if (valErr) return res.status(400).json({ success: false, message: valErr });
 
     const {
       email, password, confirm_password,
-      full_name, role,
-      phone, designation, department, mine_id,
+      full_name, role, phone,
+      organization, mine_name, employee_id,
+      designation, department, mine_id,
     } = req.body;
 
-    /* ── Password confirmation (done here so we can keep the route validator simple) */
     if (confirm_password !== undefined && password !== confirm_password)
       return res.status(400).json({ success: false, message: 'Passwords do not match.' });
 
-    /* ── Role allow-list */
     if (!ALLOWED_ROLES.includes(role))
       return res.status(400).json({ success: false, message: 'Invalid role selected.' });
 
     const emailLower = email.toLowerCase().trim();
 
-    /* ── Gmail-only guard (belt-and-suspenders after route validator) */
-    if (!emailLower.endsWith('@gmail.com'))
-      return res.status(400).json({
-        success: false,
-        message: 'Please enter a valid Gmail address (example@gmail.com).',
-      });
-
-    /* ── Duplicate email */
+    // Duplicate email check
     const existing = await query('SELECT id FROM users WHERE email = ?', [emailLower]);
     if (existing.rows.length)
-      return res.status(409).json({
-        success: false,
-        message: 'This Gmail address is already registered. Please Sign In.',
-      });
+      return res.status(409).json({ success: false, message: 'This email address is already registered. Please sign in.' });
 
-    /* ── Hash password (cost 12 ≈ 250 ms — strong against brute force) */
     const passwordHash = await bcrypt.hash(password, 12);
-    const id           = uuidv4();
-    const verifyToken  = makeVerifyToken();
-    const expiry       = tokenExpiry();
+    const id = uuidv4();
 
-    /* ── Insert user (email_verified = 0) */
+    // Determine initial status
+    // First-ever admin registration auto-approves; all others start PENDING
+    let initialStatus = 'PENDING';
+    if (role === 'admin') {
+      const adminCount = (await query("SELECT COUNT(*) as c FROM users WHERE role = 'admin'")).rows[0].c;
+      if (parseInt(adminCount, 10) === 0) initialStatus = 'APPROVED'; // bootstrap first admin
+    }
+
     await query(
       `INSERT INTO users
          (id, email, password_hash, full_name, role, phone,
-          designation, department, mine_id,
-          email_verified, verification_token, token_expires_at)
-       VALUES (?,?,?,?,?,?,?,?,?,0,?,?)`,
+          designation, department, organization,
+          mine_id, mine_name, employee_id, status, is_active)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
       [
         id, emailLower, passwordHash,
-        full_name.trim(), role,
-        phone       ? phone.trim()       : null,
-        designation ? designation.trim() : null,
-        department  ? department.trim()  : null,
-        mine_id     || null,
-        verifyToken, expiry,
+        (full_name || '').trim(), role,
+        phone        ? phone.trim()       : null,
+        designation  ? designation.trim() : null,
+        department   ? department.trim()  : null,
+        organization ? organization.trim(): null,
+        mine_id      || null,
+        mine_name    ? mine_name.trim()   : null,
+        employee_id  ? employee_id.trim() : null,
+        initialStatus,
       ],
     );
 
-    /* ── Send verification email */
-    let emailSent = false;
-    let emailError = null;
-    try {
-      await emailService.sendVerificationEmail(emailLower, full_name.trim(), verifyToken);
-      emailSent = true;
-    } catch (err) {
-      emailError = err.message;
-      console.error('[Auth] Verification email failed:', err.message);
-      // Registration still succeeds — user can resend later
-    }
-
-    /* ── Audit log (non-blocking — don't fail registration if audit fails) */
+    // Audit log (non-blocking)
     query(
-      `INSERT INTO audit_logs
-         (id, user_id, action, entity_type, entity_id, description, ip_address)
+      `INSERT INTO audit_logs (id,user_id,action,entity_type,entity_id,description,ip_address)
        VALUES (?,?,?,?,?,?,?)`,
-      [uuidv4(), id, 'REGISTER', 'auth', id, `New user registered: ${emailLower}`, req.ip],
-    ).catch(e => console.error('[Auth] Audit log failed:', e.message));
+      [uuidv4(), id, 'REGISTER', 'auth', id,
+       `New user registered: ${emailLower} (${role}) — status: ${initialStatus}`, req.ip],
+    ).catch(() => {});
 
-    /* ── Response — never leak verifyToken when SMTP is working */
-    const smtpConfigured = emailService.isConfigured();
-    const baseUrl = emailService.getClientBaseUrl();
+    // Notify all admins about new pending registration
+    if (initialStatus === 'PENDING') {
+      const admins = (await query("SELECT id FROM users WHERE role='admin' AND status='APPROVED' AND is_active=1")).rows;
+      for (const admin of admins) {
+        query(
+          `INSERT INTO notifications (id,user_id,title,message,type,priority)
+           VALUES (?,?,?,?,?,?)`,
+          [uuidv4(), admin.id,
+           `New Registration Pending: ${(full_name || '').trim()}`,
+           `${(full_name || '').trim()} (${role}) has registered and is awaiting approval. Email: ${emailLower}`,
+           'info', 'high'],
+        ).catch(() => {});
+      }
+    }
 
     return res.status(201).json({
       success: true,
-      message: emailSent
-        ? 'Registration successful! A verification email has been sent. Please check your inbox and spam folder.'
-        : smtpConfigured
-          ? 'Registration successful, but the verification email could not be sent right now. Please use "Resend Verification Email" to try again.'
-          : 'Registration successful! Email service is not configured on this server. Please contact the administrator.',
-      data: {
-        email:            emailLower,
-        email_sent:       emailSent,
-        smtp_configured:  smtpConfigured,
-        // Expose verify token ONLY in dev mode when SMTP is not set up
-        // so developers can still test the flow without a real email provider
-        ...( !smtpConfigured && process.env.NODE_ENV !== 'production'
-             ? { dev_verify_url: `${baseUrl}/verify-email?token=${encodeURIComponent(verifyToken)}` }
-             : {}
-           ),
-      },
-    });
-  } catch (err) { next(err); }
-};
-
-/* ════════════════════════════════════════════════════════════════════════════
-   VERIFY EMAIL  —  GET /auth/verify-email?token=<hex>
-════════════════════════════════════════════════════════════════════════════ */
-exports.verifyEmail = async (req, res, next) => {
-  try {
-    const { token } = req.query;
-
-    if (!token || typeof token !== 'string' || token.length < 20)
-      return res.status(400).json({
-        success: false,
-        code:    'INVALID_TOKEN',
-        message: 'Verification token is missing or malformed.',
-      });
-
-    const r = await query(
-      `SELECT id, email, full_name, email_verified, token_expires_at
-       FROM users WHERE verification_token = ?`,
-      [token.trim()],
-    );
-
-    if (!r.rows.length)
-      return res.status(400).json({
-        success: false,
-        code:    'INVALID_TOKEN',
-        message: 'This verification link is invalid or has already been used.',
-      });
-
-    const user = r.rows[0];
-
-    if (user.email_verified)
-      return res.status(200).json({
-        success: false,
-        code:    'ALREADY_VERIFIED',
-        message: 'This email address is already verified. You can sign in.',
-      });
-
-    if (new Date(user.token_expires_at) < new Date())
-      return res.status(400).json({
-        success: false,
-        code:    'TOKEN_EXPIRED',
-        message: 'This verification link has expired. Please request a new one using "Resend Verification Email".',
-      });
-
-    /* ── Mark verified and clear token atomically */
-    await query(
-      `UPDATE users
-       SET email_verified = 1,
-           verification_token = NULL,
-           token_expires_at   = NULL,
-           updated_at         = datetime('now')
-       WHERE id = ?`,
-      [user.id],
-    );
-
-    query(
-      `INSERT INTO audit_logs
-         (id, user_id, action, entity_type, entity_id, description, ip_address)
-       VALUES (?,?,?,?,?,?,?)`,
-      [uuidv4(), user.id, 'EMAIL_VERIFIED', 'auth', user.id,
-       `Email verified: ${user.email}`, req.ip || 'system'],
-    ).catch(e => console.error('[Auth] Audit log failed:', e.message));
-
-    return res.json({
-      success: true,
-      message: 'Email verified successfully! You can now sign in.',
-      data:    { email: user.email, full_name: user.full_name },
-    });
-  } catch (err) { next(err); }
-};
-
-/* ════════════════════════════════════════════════════════════════════════════
-   RESEND VERIFICATION  —  POST /auth/resend-verification
-════════════════════════════════════════════════════════════════════════════ */
-exports.resendVerification = async (req, res, next) => {
-  try {
-    const valErr = validationErrors(req);
-    if (valErr) return res.status(400).json({ success: false, message: valErr });
-
-    const email = (req.body.email || '').toLowerCase().trim();
-
-    /* ── Anti-enumeration: always return the same public message */
-    const SAFE_MSG = 'If this email is registered and unverified, a new verification link has been sent. Please check your inbox and spam folder.';
-
-    const r = await query('SELECT * FROM users WHERE email = ?', [email]);
-    if (!r.rows.length)
-      return res.json({ success: true, message: SAFE_MSG });
-
-    const user = r.rows[0];
-    if (user.email_verified)
-      return res.json({ success: true, message: 'This email is already verified. You can sign in.' });
-
-    /* ── Generate fresh token */
-    const verifyToken = makeVerifyToken();
-    const expiry      = tokenExpiry();
-    await query(
-      `UPDATE users
-       SET verification_token = ?,
-           token_expires_at   = ?,
-           updated_at         = datetime('now')
-       WHERE id = ?`,
-      [verifyToken, expiry, user.id],
-    );
-
-    let emailSent = false;
-    try {
-      await emailService.sendVerificationEmail(user.email, user.full_name, verifyToken);
-      emailSent = true;
-    } catch (e) {
-      console.error('[Auth] Resend email failed:', e.message);
-    }
-
-    const smtpConfigured = emailService.isConfigured();
-    const baseUrl        = emailService.getClientBaseUrl();
-
-    return res.json({
-      success: true,
-      message: SAFE_MSG,
-      data: {
-        email_sent:      emailSent,
-        smtp_configured: smtpConfigured,
-        ...( !smtpConfigured && process.env.NODE_ENV !== 'production'
-             ? { dev_verify_url: `${baseUrl}/verify-email?token=${encodeURIComponent(verifyToken)}` }
-             : {}
-           ),
-      },
+      message: initialStatus === 'APPROVED'
+        ? 'Admin account created. You can sign in immediately.'
+        : 'Registration submitted successfully. Your account is pending administrator approval. You will be able to sign in once an admin approves your request.',
+      data: { status: initialStatus, email: emailLower },
     });
   } catch (err) { next(err); }
 };
 
 /* ════════════════════════════════════════════════════════════════════════════
    LOGIN  —  POST /auth/login
+   Checks: exists → password → status gate → issue JWT
 ════════════════════════════════════════════════════════════════════════════ */
 exports.login = async (req, res, next) => {
   try {
@@ -302,7 +141,6 @@ exports.login = async (req, res, next) => {
 
     const r = await query('SELECT * FROM users WHERE email = ?', [email]);
 
-    /* ── Same error for "not found" and "wrong password" — prevents enumeration */
     if (!r.rows.length)
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
 
@@ -311,49 +149,205 @@ exports.login = async (req, res, next) => {
     if (!user.is_active)
       return res.status(401).json({
         success: false,
+        code: 'ACCOUNT_DEACTIVATED',
         message: 'Your account has been deactivated. Please contact the administrator.',
       });
 
-    /* ── Check password BEFORE email-verified check so attackers can't
-          distinguish "wrong password" from "email not verified" */
+    // Check password BEFORE status so we don't leak status info on wrong password
     const passwordOk = await bcrypt.compare(password, user.password_hash);
     if (!passwordOk)
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
 
-    /* ── Email verification gate */
-    if (!user.email_verified) {
+    // Status gate
+    const status = (user.status || 'APPROVED').toUpperCase();
+
+    if (status === 'PENDING')
       return res.status(403).json({
         success: false,
-        code:    'EMAIL_NOT_VERIFIED',
-        message: 'Please verify your email address before signing in. Check your inbox for the verification link.',
-        email:   user.email,
+        code: 'ACCOUNT_PENDING',
+        message: 'Your account is waiting for administrator approval. You will receive access once an admin reviews your registration.',
       });
-    }
 
-    /* ── All checks passed — issue JWT + refresh token */
-    await query(
-      "UPDATE users SET last_login = datetime('now') WHERE id = ?",
-      [user.id],
-    );
+    if (status === 'REJECTED')
+      return res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_REJECTED',
+        message: `Your registration request was not approved.${user.rejection_reason ? ' Reason: ' + user.rejection_reason : ' Please contact the administrator for more information.'}`,
+      });
+
+    if (status === 'SUSPENDED')
+      return res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_SUSPENDED',
+        message: 'Your account has been suspended. Please contact the administrator.',
+      });
+
+    if (status !== 'APPROVED')
+      return res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_NOT_APPROVED',
+        message: 'Your account is not yet approved. Please contact the administrator.',
+      });
+
+    // All checks passed
+    await query("UPDATE users SET last_login = datetime('now') WHERE id = ?", [user.id]);
 
     const { token, refreshToken } = makeTokens(user);
 
     query(
-      `INSERT INTO audit_logs
-         (id, user_id, action, entity_type, entity_id, description, ip_address)
+      `INSERT INTO audit_logs (id,user_id,action,entity_type,entity_id,description,ip_address)
        VALUES (?,?,?,?,?,?,?)`,
       [uuidv4(), user.id, 'LOGIN', 'auth', user.id,
        `User ${user.full_name} logged in`, req.ip],
-    ).catch(e => console.error('[Auth] Audit log failed:', e.message));
+    ).catch(() => {});
 
-    /* ── Strip sensitive columns before sending user object */
-    const { password_hash, verification_token, token_expires_at, ...safeUser } = user;
+    // Strip sensitive columns
+    const {
+      password_hash, verification_token, token_expires_at,
+      email_verified, ...safeUser
+    } = user;
 
     return res.json({
       success: true,
       message: 'Login successful.',
-      data:    { user: safeUser, token, refreshToken },
+      data: { user: safeUser, token, refreshToken },
     });
+  } catch (err) { next(err); }
+};
+
+/* ════════════════════════════════════════════════════════════════════════════
+   GET PENDING USERS  —  GET /auth/pending-users  (admin only)
+════════════════════════════════════════════════════════════════════════════ */
+exports.getPendingUsers = async (req, res, next) => {
+  try {
+    const { status = 'PENDING' } = req.query;
+    const validStatuses = ['PENDING','APPROVED','REJECTED','SUSPENDED'];
+    const s = validStatuses.includes(status.toUpperCase()) ? status.toUpperCase() : 'PENDING';
+
+    const rows = (await query(
+      `SELECT u.id, u.email, u.full_name, u.role, u.phone,
+              u.organization, u.mine_id, u.mine_name, u.employee_id,
+              u.designation, u.department, u.status,
+              u.is_active, u.created_at, u.approved_at, u.rejection_reason,
+              approver.full_name AS approved_by_name,
+              m.name AS mine_db_name
+       FROM users u
+       LEFT JOIN users approver ON u.approved_by = approver.id
+       LEFT JOIN mines m ON u.mine_id = m.id
+       WHERE u.status = ?
+       ORDER BY u.created_at DESC`,
+      [s],
+    )).rows;
+
+    return res.json({ success: true, data: rows, status: s });
+  } catch (err) { next(err); }
+};
+
+/* ════════════════════════════════════════════════════════════════════════════
+   APPROVE USER  —  POST /auth/approve/:id  (admin only)
+════════════════════════════════════════════════════════════════════════════ */
+exports.approveUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { role, mine_id } = req.body; // admin can optionally set/change role and mine
+
+    const row = (await query('SELECT * FROM users WHERE id = ?', [id])).rows[0];
+    if (!row) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (row.status === 'APPROVED')
+      return res.status(400).json({ success: false, message: 'User is already approved.' });
+
+    const sets = [
+      "status = 'APPROVED'",
+      "approved_at = datetime('now')",
+      `approved_by = '${req.user.id}'`,
+      "rejection_reason = NULL",
+      "is_active = 1",
+      "updated_at = datetime('now')",
+    ];
+    const params = [];
+
+    if (role && ALLOWED_ROLES.includes(role)) { sets.push('role = ?'); params.push(role); }
+    if (mine_id !== undefined) { sets.push('mine_id = ?'); params.push(mine_id || null); }
+
+    params.push(id);
+    await query(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, params);
+
+    // Notify the user (in-app notification)
+    query(
+      `INSERT INTO notifications (id,user_id,title,message,type,priority)
+       VALUES (?,?,?,?,?,?)`,
+      [uuidv4(), id,
+       '✅ Account Approved — Welcome to KhanNetra!',
+       `Your KhanNetra DGMS account has been approved by an administrator. You can now sign in and access the system.`,
+       'success', 'high'],
+    ).catch(() => {});
+
+    query(
+      `INSERT INTO audit_logs (id,user_id,action,entity_type,entity_id,description,ip_address)
+       VALUES (?,?,?,?,?,?,?)`,
+      [uuidv4(), req.user.id, 'APPROVE_USER', 'user', id,
+       `Approved user: ${row.email} (${row.role})`, req.ip],
+    ).catch(() => {});
+
+    const updated = (await query('SELECT id,email,full_name,role,status,mine_id,mine_name,organization FROM users WHERE id=?', [id])).rows[0];
+    return res.json({ success: true, message: `User "${row.full_name}" approved.`, data: updated });
+  } catch (err) { next(err); }
+};
+
+/* ════════════════════════════════════════════════════════════════════════════
+   REJECT USER  —  POST /auth/reject/:id  (admin only)
+════════════════════════════════════════════════════════════════════════════ */
+exports.rejectUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const row = (await query('SELECT * FROM users WHERE id = ?', [id])).rows[0];
+    if (!row) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    await query(
+      `UPDATE users SET status='REJECTED', rejection_reason=?, is_active=0, updated_at=datetime('now') WHERE id=?`,
+      [reason || 'Registration request not approved.', id],
+    );
+
+    query(
+      `INSERT INTO audit_logs (id,user_id,action,entity_type,entity_id,description,ip_address)
+       VALUES (?,?,?,?,?,?,?)`,
+      [uuidv4(), req.user.id, 'REJECT_USER', 'user', id,
+       `Rejected user: ${row.email} — reason: ${reason || 'none'}`, req.ip],
+    ).catch(() => {});
+
+    return res.json({ success: true, message: `User "${row.full_name}" rejected.` });
+  } catch (err) { next(err); }
+};
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SUSPEND USER  —  POST /auth/suspend/:id  (admin only)
+════════════════════════════════════════════════════════════════════════════ */
+exports.suspendUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    if (id === req.user.id)
+      return res.status(400).json({ success: false, message: 'You cannot suspend your own account.' });
+
+    const row = (await query('SELECT * FROM users WHERE id = ?', [id])).rows[0];
+    if (!row) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    await query(
+      `UPDATE users SET status='SUSPENDED', rejection_reason=?, is_active=0, updated_at=datetime('now') WHERE id=?`,
+      [reason || 'Account suspended by administrator.', id],
+    );
+
+    query(
+      `INSERT INTO audit_logs (id,user_id,action,entity_type,entity_id,description,ip_address)
+       VALUES (?,?,?,?,?,?,?)`,
+      [uuidv4(), req.user.id, 'SUSPEND_USER', 'user', id,
+       `Suspended user: ${row.email} — reason: ${reason || 'none'}`, req.ip],
+    ).catch(() => {});
+
+    return res.json({ success: true, message: `User "${row.full_name}" suspended.` });
   } catch (err) { next(err); }
 };
 
@@ -364,9 +358,10 @@ exports.getMe = async (req, res, next) => {
   try {
     const r = await query(
       `SELECT u.id, u.email, u.full_name, u.role, u.phone,
-              u.designation, u.department, u.mine_id,
-              u.is_active, u.email_verified, u.last_login, u.created_at,
-              m.name AS mine_name
+              u.designation, u.department, u.organization,
+              u.mine_id, u.mine_name, u.employee_id,
+              u.status, u.is_active, u.last_login, u.created_at,
+              m.name AS mine_db_name
        FROM users u
        LEFT JOIN mines m ON u.mine_id = m.id
        WHERE u.id = ?`,
@@ -388,18 +383,18 @@ exports.refreshToken = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Refresh token required.' });
 
     let decoded;
-    try {
-      decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    } catch {
-      return res.status(401).json({ success: false, message: 'Invalid or expired refresh token.' });
-    }
+    try { decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET); }
+    catch { return res.status(401).json({ success: false, message: 'Invalid or expired refresh token.' }); }
 
     const r = await query(
-      'SELECT id, email, full_name, role FROM users WHERE id = ? AND is_active = 1',
+      "SELECT id,email,full_name,role,status FROM users WHERE id=? AND is_active=1",
       [decoded.id],
     );
     if (!r.rows[0])
       return res.status(401).json({ success: false, message: 'User not found or deactivated.' });
+
+    if ((r.rows[0].status || 'APPROVED') !== 'APPROVED')
+      return res.status(403).json({ success: false, message: 'Account not approved.' });
 
     return res.json({ success: true, data: makeTokens(r.rows[0]) });
   } catch (err) { next(err); }
@@ -410,19 +405,20 @@ exports.refreshToken = async (req, res, next) => {
 ════════════════════════════════════════════════════════════════════════════ */
 exports.updateProfile = async (req, res, next) => {
   try {
-    const { full_name, phone, designation, department } = req.body;
+    const { full_name, phone, designation, department, organization } = req.body;
     await query(
       `UPDATE users
-       SET full_name    = COALESCE(?, full_name),
-           phone        = COALESCE(?, phone),
-           designation  = COALESCE(?, designation),
-           department   = COALESCE(?, department),
-           updated_at   = datetime('now')
+       SET full_name   = COALESCE(?, full_name),
+           phone       = COALESCE(?, phone),
+           designation = COALESCE(?, designation),
+           department  = COALESCE(?, department),
+           organization= COALESCE(?, organization),
+           updated_at  = datetime('now')
        WHERE id = ?`,
-      [full_name, phone, designation, department, req.user.id],
+      [full_name, phone, designation, department, organization, req.user.id],
     );
     const user = (await query(
-      'SELECT id, email, full_name, role, phone, designation, department FROM users WHERE id = ?',
+      'SELECT id,email,full_name,role,phone,designation,department,organization,mine_id,mine_name FROM users WHERE id=?',
       [req.user.id],
     )).rows[0];
     return res.json({ success: true, message: 'Profile updated.', data: user });
@@ -435,30 +431,24 @@ exports.updateProfile = async (req, res, next) => {
 exports.changePassword = async (req, res, next) => {
   try {
     const { current_password, new_password } = req.body;
-
     if (!current_password || !new_password)
-      return res.status(400).json({ success: false, message: 'Both current and new passwords are required.' });
-
+      return res.status(400).json({ success: false, message: 'Both passwords required.' });
     if (new_password.length < 8)
       return res.status(400).json({ success: false, message: 'New password must be at least 8 characters.' });
-
     if (current_password === new_password)
-      return res.status(400).json({ success: false, message: 'New password must be different from your current password.' });
+      return res.status(400).json({ success: false, message: 'New password must differ from current.' });
 
-    const r = await query('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
-    if (!r.rows[0])
-      return res.status(404).json({ success: false, message: 'User not found.' });
+    const r = await query('SELECT password_hash FROM users WHERE id=?', [req.user.id]);
+    if (!r.rows[0]) return res.status(404).json({ success: false, message: 'User not found.' });
 
     const match = await bcrypt.compare(current_password, r.rows[0].password_hash);
     if (!match)
       return res.status(400).json({ success: false, message: 'Current password is incorrect.' });
 
-    const newHash = await bcrypt.hash(new_password, 12);
     await query(
-      "UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?",
-      [newHash, req.user.id],
+      "UPDATE users SET password_hash=?, updated_at=datetime('now') WHERE id=?",
+      [await bcrypt.hash(new_password, 12), req.user.id],
     );
-
     return res.json({ success: true, message: 'Password changed successfully.' });
   } catch (err) { next(err); }
 };

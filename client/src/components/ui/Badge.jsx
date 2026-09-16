@@ -1,5 +1,3 @@
-import clsx from 'clsx';
-
 const MAP = {
   red:    'badge-red',
   yellow: 'badge-yellow',
@@ -11,16 +9,16 @@ const MAP = {
   teal:   'badge-teal',
 };
 
-const DOT_COLOR = {
-  red: 'bg-danger-400', yellow: 'bg-amber-400', green: 'bg-success-400',
-  blue: 'bg-info-400', gray: 'bg-coal-500', orange: 'bg-safety-400',
-  purple: 'bg-purple-400', teal: 'bg-teal-400',
+const DOT = {
+  red:'bg-red-500', yellow:'bg-amber-500', green:'bg-green-500',
+  blue:'bg-sky-500', gray:'bg-slate-400',  orange:'bg-orange-500',
+  purple:'bg-purple-500', teal:'bg-teal-500',
 };
 
 export default function Badge({ children, color = 'gray', className = '', dot = false }) {
   return (
-    <span className={clsx(MAP[color] || 'badge-gray', className)}>
-      {dot && <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0', DOT_COLOR[color] || 'bg-coal-500')} />}
+    <span className={`${MAP[color] || 'badge-gray'}${className ? ' '+className : ''}`}>
+      {dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${DOT[color] || 'bg-slate-400'}`}/>}
       {children}
     </span>
   );

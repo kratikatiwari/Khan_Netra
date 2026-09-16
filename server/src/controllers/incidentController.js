@@ -34,16 +34,33 @@ exports.getById = async (req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
-    const {mine_id,type,severity,category,description,incident_date,location_in_mine,injuries_count=0,fatalities_count=0,affected_workers=0}=req.body;
-    if(!mine_id||!type||!severity||!description||!incident_date)
-      return res.status(400).json({success:false,message:'Required fields missing'});
-    const cnt=(await query('SELECT COUNT(*) as c FROM incidents')).rows[0].c;
-    const num=`INC-${new Date().getFullYear()}-${String(cnt+1).padStart(4,'0')}`;
-    const id=uuidv4();
-    const dgms=['fatal','serious'].includes(severity)?1:0;
+    const {
+      mine_id, type, severity, category, description, incident_date,
+      location_in_mine, injuries_count=0, fatalities_count=0, affected_workers=0,
+      latitude, longitude, gps_accuracy,
+    } = req.body;
+    if (!mine_id || !type || !severity || !description || !incident_date)
+      return res.status(400).json({ success: false, message: 'Required fields missing' });
+    const cnt = (await query('SELECT COUNT(*) as c FROM incidents')).rows[0].c;
+    const num = `INC-${new Date().getFullYear()}-${String(cnt+1).padStart(4,'0')}`;
+    const id  = uuidv4();
+    const dgms = ['fatal','serious'].includes(severity) ? 1 : 0;
     await query(
-      `INSERT INTO incidents (id,incident_number,mine_id,type,severity,category,description,incident_date,location_in_mine,injuries_count,fatalities_count,affected_workers,status,reported_by,dgms_notified,dgms_notification_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'open',?,?,?)`,
-      [id,num,mine_id,type,severity,category||type,description,incident_date,location_in_mine,injuries_count,fatalities_count,affected_workers,req.user.id,dgms,dgms?new Date().toISOString().split('T')[0]:null]
+      `INSERT INTO incidents
+         (id,incident_number,mine_id,type,severity,category,description,incident_date,
+          location_in_mine,injuries_count,fatalities_count,affected_workers,
+          latitude,longitude,gps_accuracy,
+          status,reported_by,dgms_notified,dgms_notification_date)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?,?,?)`,
+      [
+        id, num, mine_id, type, severity, category||type, description, incident_date,
+        location_in_mine||null, injuries_count, fatalities_count, affected_workers,
+        latitude  ? parseFloat(latitude)  : null,
+        longitude ? parseFloat(longitude) : null,
+        gps_accuracy ? parseInt(gps_accuracy) : null,
+        req.user.id, dgms,
+        dgms ? new Date().toISOString().split('T')[0] : null,
+      ]
     );
     if(dgms){
       const admins=(await query(`SELECT id FROM users WHERE role IN ('admin','government_officer','inspector')`)).rows;

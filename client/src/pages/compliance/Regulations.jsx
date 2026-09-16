@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import BackButton from '../../components/ui/BackButton';
 import { FiSearch, FiBookOpen, FiPlus } from 'react-icons/fi';
 import { complianceApi } from '../../services/api';
 import Badge from '../../components/ui/Badge';
@@ -26,14 +27,14 @@ export default function Regulations() {
     setLoading(true);
     try {
       const res = await complianceApi.getRegulations({ search, category });
-      setRegulations(res.data);
+      setRegulations(res.data ?? res);
     } catch {} finally { setLoading(false); }
   };
 
   useEffect(() => { fetch(); }, [search, category]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6"><BackButton className="mb-1"/>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="page-title">Regulations & Rules</h1>

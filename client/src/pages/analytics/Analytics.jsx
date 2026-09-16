@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { FiBarChart2, FiDownload, FiTrendingUp, FiAlertCircle } from 'react-icons/fi';
+import BackButton from '../../components/ui/BackButton';
+import { FiBarChart2, FiDownload, FiTarget, FiAlertOctagon } from 'react-icons/fi';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -91,7 +92,7 @@ export default function Analytics() {
 
       {/* ── OVERVIEW ── */}
       {tab === 'overview' && (
-        <div className="space-y-5">
+        <div className="space-y-5"><BackButton className="mb-1"/>
           <div className="card">
             <h3 className="section-title">Violation Trends — 12 Months</h3>
             <ResponsiveContainer width="100%" height={260}>

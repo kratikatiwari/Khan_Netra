@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import BackButton from '../../components/ui/BackButton';
 import { FiBell, FiCheck, FiTrash2 } from 'react-icons/fi';
 import { notificationsApi } from '../../services/api';
 import { timeAgo } from '../../utils/helpers';
@@ -56,7 +57,7 @@ export default function Notifications() {
   const unread = notifs.filter(n => !n.is_read).length;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5"><BackButton className="mb-1"/>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="page-title flex items-center gap-2">

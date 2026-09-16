@@ -28,9 +28,16 @@ CREATE TABLE IF NOT EXISTS users (
   phone TEXT,
   designation TEXT,
   department TEXT,
+  organization TEXT,
   mine_id TEXT,
+  mine_name TEXT,
+  employee_id TEXT,
+  status TEXT DEFAULT 'PENDING',
   is_active INTEGER DEFAULT 1,
   last_login TEXT,
+  approved_at TEXT,
+  approved_by TEXT,
+  rejection_reason TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -165,6 +172,18 @@ CREATE TABLE IF NOT EXISTS inspections (
   follow_up_date TEXT,
   report_file TEXT,
   checklist_completed INTEGER DEFAULT 0,
+  location_in_mine TEXT,
+  section TEXT,
+  gps_lat REAL,
+  gps_lon REAL,
+  gps_captured_at TEXT,
+  evidence_photos TEXT,
+  corrective_actions_count INTEGER DEFAULT 0,
+  inspector_notes TEXT,
+  risk_level TEXT DEFAULT 'Low',
+  total_checks INTEGER DEFAULT 0,
+  passed_checks INTEGER DEFAULT 0,
+  failed_checks INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -177,7 +196,31 @@ CREATE TABLE IF NOT EXISTS inspection_checklist (
   is_compliant INTEGER,
   score INTEGER DEFAULT 0,
   remarks TEXT,
+  result TEXT DEFAULT 'na',
+  observation TEXT,
+  evidence_photo TEXT,
   created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS inspection_corrective_actions (
+  id TEXT PRIMARY KEY,
+  inspection_id TEXT NOT NULL,
+  inspection_checklist_id TEXT,
+  mine_id TEXT NOT NULL,
+  observation TEXT NOT NULL,
+  responsible_person TEXT,
+  department TEXT,
+  priority TEXT DEFAULT 'medium',
+  due_date TEXT,
+  status TEXT DEFAULT 'open',
+  resolution_notes TEXT,
+  resolution_evidence TEXT,
+  resolved_at TEXT,
+  resolved_by TEXT,
+  requires_reinspection INTEGER DEFAULT 0,
+  created_by TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS documents (
@@ -245,6 +288,14 @@ CREATE TABLE IF NOT EXISTS compliance_records (
   verified_by TEXT,
   verification_date TEXT,
   due_date TEXT,
+  workflow_status TEXT DEFAULT 'pending',
+  responsible_officer TEXT,
+  rejection_reason TEXT,
+  document_id TEXT,
+  submitted_at TEXT,
+  approved_at TEXT,
+  approved_by TEXT,
+  resubmission_count INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -370,18 +421,18 @@ const insert = db.transaction(() => {
   // Users
   const userIds = Array.from({length:10},()=>uuid());
   const users = [
-    [userIds[0],'admin@khannetra.gov.in',pw,'Dr. Arvind Mishra','admin','+91-9800000001','Director General','DGMS HQ',null,1],
-    [userIds[1],'officer1@khannetra.gov.in',pw,'Shri Ravi Shankar','government_officer','+91-9800000002','Joint Secretary','Ministry of Coal',null,1],
-    [userIds[2],'manager1@khannetra.gov.in',pw,'Rajesh Kumar Singh','mine_manager','+91-9876543210','Mine Manager','Jharia Central Coal Mine',mineIds[0],1],
-    [userIds[3],'manager2@khannetra.gov.in',pw,'Priya Sharma','mine_manager','+91-9876543211','Mine Manager','Korba Opencast Mine',mineIds[1],1],
-    [userIds[4],'inspector1@khannetra.gov.in',pw,'Mohd. Arif Khan','inspector','+91-9800000005','Inspector of Mines','DGMS Region-2',null,1],
-    [userIds[5],'inspector2@khannetra.gov.in',pw,'Suresh Babu','inspector','+91-9800000006','Senior Inspector','DGMS Region-3',null,1],
-    [userIds[6],'safety1@khannetra.gov.in',pw,'Geeta Rani Verma','safety_officer','+91-9800000007','Safety Officer','Jharia Central Coal Mine',mineIds[0],1],
-    [userIds[7],'env1@khannetra.gov.in',pw,'Dr. Anita Joshi','environment_officer','+91-9800000008','Environmental Officer','CPCB',null,1],
-    [userIds[8],'manager3@khannetra.gov.in',pw,'Sunita Devi','mine_manager','+91-9876543213','Mine Manager','Raniganj Deep Mine',mineIds[3],1],
-    [userIds[9],'officer2@khannetra.gov.in',pw,'Krishnaswamy Iyer','government_officer','+91-9800000010','Director (Mines Safety)','DGMS',null,1],
+    [userIds[0],'admin@khannetra.gov.in',pw,'Dr. Arvind Mishra','admin','+91-9800000001','Director General','DGMS HQ','DGMS, Ministry of Coal',null,'DGMS Admin Complex, New Delhi','DGMS-ADM-001','APPROVED',1],
+    [userIds[1],'officer1@khannetra.gov.in',pw,'Shri Ravi Shankar','government_officer','+91-9800000002','Joint Secretary','Ministry of Coal','Ministry of Coal, GoI',null,'Shram Shakti Bhawan, New Delhi','MOC-OFF-001','APPROVED',1],
+    [userIds[2],'manager1@khannetra.gov.in',pw,'Rajesh Kumar Singh','mine_manager','+91-9876543210','Mine Manager','Jharia Central Coal Mine','Bharat Coking Coal Ltd',mineIds[0],'Jharia Central Coal Mine','CCL-MGR-001','APPROVED',1],
+    [userIds[3],'manager2@khannetra.gov.in',pw,'Priya Sharma','mine_manager','+91-9876543211','Mine Manager','Korba Opencast Mine','South Eastern Coalfields Ltd',mineIds[1],'Korba Opencast Mine','SECL-MGR-002','APPROVED',1],
+    [userIds[4],'inspector1@khannetra.gov.in',pw,'Mohd. Arif Khan','inspector','+91-9800000005','Inspector of Mines','DGMS Region-2','DGMS',null,'DGMS Region-2 Office, Dhanbad','DGMS-INS-001','APPROVED',1],
+    [userIds[5],'inspector2@khannetra.gov.in',pw,'Suresh Babu','inspector','+91-9800000006','Senior Inspector','DGMS Region-3','DGMS',null,'DGMS Region-3 Office, Nagpur','DGMS-INS-002','APPROVED',1],
+    [userIds[6],'safety1@khannetra.gov.in',pw,'Geeta Rani Verma','safety_officer','+91-9800000007','Safety Officer','Jharia Central Coal Mine','Bharat Coking Coal Ltd',mineIds[0],'Jharia Central Coal Mine','CCL-SAF-001','APPROVED',1],
+    [userIds[7],'env1@khannetra.gov.in',pw,'Dr. Anita Joshi','environment_officer','+91-9800000008','Environmental Officer','CPCB','Central Pollution Control Board',null,'CPCB HQ, New Delhi','CPCB-ENV-001','APPROVED',1],
+    [userIds[8],'manager3@khannetra.gov.in',pw,'Sunita Devi','mine_manager','+91-9876543213','Mine Manager','Raniganj Deep Mine','Eastern Coalfields Ltd',mineIds[3],'Raniganj Deep Mine','ECL-MGR-003','APPROVED',1],
+    [userIds[9],'officer2@khannetra.gov.in',pw,'Krishnaswamy Iyer','government_officer','+91-9800000010','Director (Mines Safety)','DGMS','DGMS, Ministry of Coal',null,'DGMS HQ, Dhanbad','DGMS-OFF-002','APPROVED',1],
   ];
-  const userStmt = db.prepare(`INSERT INTO users (id,email,password_hash,full_name,role,phone,designation,department,mine_id,is_active) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+  const userStmt = db.prepare(`INSERT INTO users (id,email,password_hash,full_name,role,phone,designation,department,organization,mine_id,mine_name,employee_id,status,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   users.forEach(u => userStmt.run(...u));
 
   // Violations

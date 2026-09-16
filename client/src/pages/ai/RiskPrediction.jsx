@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
+import BackButton from '../../components/ui/BackButton';
 import { useSearchParams } from 'react-router-dom';
-import { FiCpu, FiAlertTriangle, FiActivity, FiBarChart2 } from 'react-icons/fi';
+import {
+  FiCpu, FiAlertTriangle, FiBarChart2
+} from 'react-icons/fi';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { aiApi, minesApi } from '../../services/api';
 import ScoreBar from '../../components/ui/ScoreBar';
@@ -22,7 +25,7 @@ export default function RiskPrediction() {
     setLoading(true);
     try {
       const res = await aiApi.getRiskPrediction(selectedMine);
-      setResult(res.data);
+      setResult(res.data ?? res);
     } catch {} finally { setLoading(false); }
   };
 
@@ -42,7 +45,7 @@ export default function RiskPrediction() {
   })) || [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6"><BackButton className="mb-1"/>
       <div>
         <h1 className="page-title flex items-center gap-2"><FiCpu className="text-primary-600" /> AI Risk Prediction</h1>
         <p className="page-subtitle">AI-powered risk assessment and predictive analytics for mines</p>

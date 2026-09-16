@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
+import BackButton from '../../components/ui/BackButton';
 import { Link, useSearchParams } from 'react-router-dom';
-import { FiPlus, FiSearch, FiAlertCircle, FiEye, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiAlertOctagon, FiEye, FiEdit2, FiTrash2 } from 'react-icons/fi';
 import { violationsApi, minesApi } from '../../services/api';
 import { formatDate, formatCurrency } from '../../utils/helpers';
 import Badge from '../../components/ui/Badge';
@@ -61,10 +62,10 @@ export default function Violations() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5"><BackButton className="mb-1"/>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="page-title flex items-center gap-2"><FiAlertCircle className="text-amber-400"/> Violations</h1>
+          <h1 className="page-title flex items-center gap-2"><FiAlertOctagon className="text-amber-400"/> Violations</h1>
           <p className="page-subtitle">Track regulatory violations and corrective actions</p>
         </div>
         {canCreate && <button onClick={() => setShowForm(true)} className="btn-primary"><FiPlus size={15}/> Report Violation</button>}
@@ -84,7 +85,7 @@ export default function Violations() {
       <div className="card-sm flex flex-wrap gap-3">
         <div className="flex-1 min-w-48 relative">
           <FiSearch size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-coal-600"/>
-          <input value={search} onChange={e => setSearch(e.target.value)} className="input pl-9" placeholder="Search violations…"/>
+          <input value={search} onChange={e => setSearch(e.target.value)} className="input pl-9" placeholder="Search violationsâ€¦"/>
         </div>
         <select value={filters.severity} onChange={e => setFilters(p=>({...p, severity:e.target.value}))} className="select w-36">
           <option value="">All Severity</option>
@@ -97,7 +98,7 @@ export default function Violations() {
       </div>
 
       {loading ? <PageLoader/> : violations.length===0 ? (
-        <EmptyState icon={FiAlertCircle} title="No violations found" message="No violations match your current filters."/>
+        <EmptyState icon={FiAlertOctagon} title="No violations found" message="No violations match your current filters."/>
       ) : (
         <div className="table-container">
           <table className="table">
@@ -155,7 +156,7 @@ export default function Violations() {
               <Badge color={STAT[viewItem.status]}>{viewItem.status.replace('_',' ')}</Badge>
             </div>
             <div className="grid grid-cols-2 gap-4 text-sm">
-              {[['Mine',viewItem.mine_name],['Category',viewItem.category],['Type',viewItem.type],['Fine',formatCurrency(viewItem.fine_amount)],['Detected',formatDate(viewItem.detected_date)],['Regulation',viewItem.regulation_reference||'—']].map(([k,v])=>(
+              {[['Mine',viewItem.mine_name],['Category',viewItem.category],['Type',viewItem.type],['Fine',formatCurrency(viewItem.fine_amount)],['Detected',formatDate(viewItem.detected_date)],['Regulation',viewItem.regulation_reference||'â€”']].map(([k,v])=>(
                 <div key={k}>
                   <p className="text-[10px] text-coal-600 uppercase tracking-widest mb-0.5">{k}</p>
                   <p className="font-semibold text-coal-200">{v}</p>

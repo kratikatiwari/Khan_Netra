@@ -58,22 +58,35 @@ function fetchJSON(url, timeoutMs = 15000) {
       if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location) {
         return fetchJSON(res.headers.location, timeoutMs).then(resolve).catch(reject);
       }
+      if (res.statusCode === 429) {
+        return reject(new Error(`Rate limited by ${opts.hostname} (429) — skipping this poll`));
+      }
       if (res.statusCode >= 400) {
         return reject(new Error(`HTTP ${res.statusCode} from ${opts.hostname}`));
       }
+      // Check Content-Type header — reject early if clearly not JSON
+      const ct = (res.headers['content-type'] || '').toLowerCase();
+      const isJsonCt = ct.includes('json') || ct.includes('geo') || ct === '' || ct.includes('*/*');
       res.setEncoding('utf8');
       res.on('data', c => data += c);
       res.on('end', () => {
         const trimmed = data.trim();
-        if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
-          return reject(new Error(`Non-JSON response from ${opts.hostname} (${res.statusCode})`));
+        // Guard: must start with { or [ regardless of Content-Type
+        if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) {
+          return reject(new Error(
+            `Non-JSON response from ${opts.hostname} (HTTP ${res.statusCode}) — ` +
+            `got ${trimmed.slice(0, 40).replace(/\n/g, ' ')}...`
+          ));
         }
         try { resolve(JSON.parse(trimmed)); }
-        catch (e) { reject(new Error(`JSON parse failed: ${e.message}`)); }
+        catch (e) { reject(new Error(`JSON parse failed from ${opts.hostname}: ${e.message}`)); }
       });
     });
-    req.on('error', reject);
-    req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error(`Timeout after ${timeoutMs}ms`)); });
+    req.on('error', (e) => reject(new Error(`Network error reaching ${opts.hostname}: ${e.message}`)));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      reject(new Error(`Timeout after ${timeoutMs}ms reaching ${opts.hostname}`));
+    });
     req.end();
   });
 }
@@ -137,21 +150,43 @@ async function saveAlert(alert) {
 
 /* ══════════════════════════════════════════════════════════════════
    SOURCE 1 — USGS Earthquake Feed (real-time, past 24h, M4+)
+   Primary:  https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.0_day.geojson
+   Fallback: https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson
 ══════════════════════════════════════════════════════════════════ */
 async function fetchUSGSEarthquakes(mines) {
-  const url = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.0_day.geojson';
-  const json = await fetchJSON(url);
-  const saved = [];
+  const URLS = [
+    'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.0_day.geojson',
+    'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson',
+  ];
 
-  for (const feat of (json.features || [])) {
+  let json = null;
+  let lastErr = null;
+  for (const url of URLS) {
+    try {
+      json = await fetchJSON(url, 12000);
+      break;
+    } catch (e) {
+      lastErr = e;
+      // Try next URL
+    }
+  }
+  if (!json) {
+    throw new Error(lastErr?.message || 'All USGS URLs failed');
+  }
+
+  const saved = [];
+  const features = Array.isArray(json.features) ? json.features : [];
+
+  for (const feat of features) {
     const p   = feat.properties;
     const geo = feat.geometry?.coordinates; // [lon, lat, depth]
-    if (!geo) continue;
+    if (!geo || !p) continue;
 
     const [lon, lat] = geo;
-    const mag = p.mag;
-    const externalId = feat.id;
+    const mag = parseFloat(p.mag);
+    if (isNaN(mag)) continue;
 
+    const externalId = feat.id;
     if (await isDuplicate(externalId)) continue;
 
     const affected = findAffectedMines(mines, lat, lon, 600);
@@ -256,7 +291,7 @@ exports.pollAllSources = async () => {
     results.earthquakes = ids.length;
   } catch (e) {
     results.errors.push(`USGS: ${e.message}`);
-    console.warn('[Disaster] USGS fetch error:', e.message);
+    console.warn(`[Disaster] USGS unavailable: ${e.message.slice(0, 120)}`);
   }
 
   // Weather alerts
@@ -265,12 +300,15 @@ exports.pollAllSources = async () => {
     results.weather = ids.length;
   } catch (e) {
     results.errors.push(`Weather: ${e.message}`);
-    console.warn('[Disaster] Weather fetch error:', e.message);
+    console.warn(`[Disaster] Weather unavailable: ${e.message.slice(0, 120)}`);
   }
 
   results.duration_ms = Date.now() - startTime;
-  if (results.earthquakes + results.weather > 0) {
+  const saved = results.earthquakes + results.weather;
+  if (saved > 0 || results.errors.length === 0) {
     console.log(`[Disaster] Poll: +${results.earthquakes} earthquakes, +${results.weather} weather alerts (${results.duration_ms}ms)`);
+  } else if (results.errors.length > 0) {
+    console.log(`[Disaster] Poll completed with external API issues (${results.duration_ms}ms) — alerts DB unaffected`);
   }
   return results;
 };

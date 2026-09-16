@@ -1,172 +1,356 @@
-'use strict';
 /**
  * KhanNetra OCR Controller
- * Uses Gemini Vision to extract compliance information from uploaded documents.
- * Supports: PDF page images, scanned certificates, inspection reports, licenses.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Endpoints:
+ *   GET  /ocr/health         — service status
+ *   POST /ocr/extract        — upload doc → extract text + structured fields
+ *   POST /ocr/save           — save structured data into target module DB
+ *   GET  /ocr/history        — list previous extractions for this user
+ *   GET  /ocr/history/:id    — get one extraction record
+ *   DELETE /ocr/history/:id  — discard an extraction record
+ * ─────────────────────────────────────────────────────────────────────────────
  */
+'use strict';
+
 const fs   = require('fs');
 const path = require('path');
-const https = require('https');
-const sharp = require('sharp');
 const { v4: uuid } = require('uuid');
 const { query } = require('../config/database');
+const {
+  extractDocument,
+  mapToInspection,
+  mapToComplianceRecord,
+  mapToSafetyObservation,
+  mapToViolation,
+  saveAsInspection,
+  saveAsCompliance,
+  saveAsSafetyObservation,
+  saveAsViolation,
+  saveOcrExtraction,
+  suggestTargetModule,
+} = require('../services/ocrService');
 
-const FALLBACK_MODELS = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
+/* ─────────────────────────────────────────────────────────────────────────
+   GET /ocr/health
+──────────────────────────────────────────────────────────────────────── */
+exports.health = (req, res) => {
+  const hasKey = !!(
+    process.env.GEMINI_API_KEY &&
+    process.env.GEMINI_API_KEY !== 'your_gemini_api_key_here'
+  );
+  res.json({
+    success:   true,
+    service:   'KhanNetra OCR Document Digitization',
+    backend:   'Gemini Vision + pdf-parse',
+    configured: hasKey,
+    supported_input: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
+    supported_output: ['inspection', 'compliance', 'safety_observation', 'violation'],
+    max_file_size_mb: 15,
+  });
+};
 
-async function callGeminiOCR(imageBase64, docType) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === 'your_gemini_api_key_here')
-    throw new Error('GEMINI_API_KEY not configured');
-
-  const prompt = `You are a document OCR and compliance information extractor for Indian coal mine governance.
-
-Analyse this document image and extract the following information in strict JSON format.
-
-Document type hint: "${docType}"
-
-Extract:
-{
-  "document_type": "License/Certificate/Permit/Report/Other",
-  "document_number": "extracted document number or null",
-  "title": "document title",
-  "issuing_authority": "issuing organisation name",
-  "issue_date": "YYYY-MM-DD or null",
-  "expiry_date": "YYYY-MM-DD or null",
-  "holder_name": "person or company name on document",
-  "mine_name": "mine name if mentioned",
-  "key_conditions": ["array of important conditions or requirements mentioned"],
-  "compliance_items": [
-    { "item": "compliance requirement", "status": "compliant/non_compliant/pending/unknown", "deadline": "YYYY-MM-DD or null" }
-  ],
-  "violations_mentioned": ["array of any violations or non-compliances mentioned"],
-  "regulatory_references": ["list of acts/regulations referenced e.g. CMR 2017, Mines Act 1952"],
-  "summary": "2-3 sentence plain English summary of what this document is and its compliance status",
-  "confidence": 0.95,
-  "warnings": ["any issues with document clarity, missing info, etc."]
-}
-
-Return ONLY valid JSON. No markdown. No explanation.`;
-
-  const bodyObj = {
-    contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: imageBase64 } }] }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 1500 },
-    safetySettings: [
-      { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-    ],
-  };
-
-  for (let i = 0; i < FALLBACK_MODELS.length; i++) {
-    const model = FALLBACK_MODELS[i];
-    const body  = JSON.stringify(bodyObj);
-    const result = await new Promise((resolve, reject) => {
-      const opts = {
-        hostname: 'generativelanguage.googleapis.com',
-        path:     `/v1beta/models/${model}:generateContent?key=${apiKey}`,
-        method:   'POST',
-        headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-      };
-      let data = '';
-      const req = https.request(opts, (res) => {
-        res.on('data', c => data += c);
-        res.on('end', () => {
-          try {
-            const j = JSON.parse(data);
-            if (j.error) {
-              const msg = j.error.message || '';
-              if (/not found|no longer available|not supported|high demand/i.test(msg) && i < FALLBACK_MODELS.length - 1)
-                return resolve({ retry: true });
-              return reject(new Error(`Gemini: ${msg}`));
-            }
-            resolve({ text: j.candidates?.[0]?.content?.parts?.[0]?.text || '', model });
-          } catch (e) { reject(e); }
-        });
-      });
-      req.on('error', reject);
-      req.setTimeout(30000, () => { req.destroy(); reject(new Error('Gemini timeout')); });
-      req.write(body); req.end();
-    });
-    if (result.retry) continue;
-    return result;
-  }
-  throw new Error('All Gemini models unavailable');
-}
-
-function parseExtraction(text) {
-  let clean = text.trim().replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim();
-  try { return JSON.parse(clean); }
-  catch {
-    const m = clean.match(/\{[\s\S]*\}/);
-    if (m) return JSON.parse(m[0]);
-    throw new Error('Could not parse JSON from model response');
-  }
-}
-
+/* ─────────────────────────────────────────────────────────────────────────
+   POST /ocr/extract
+   multipart/form-data: document (file), doc_type (string), mine_id (opt)
+──────────────────────────────────────────────────────────────────────── */
 exports.extractDocument = async (req, res, next) => {
   let tempPath = null;
   try {
-    if (!req.file) return res.status(400).json({ success: false, message: 'Document image required (JPEG/PNG)' });
-    tempPath = req.file.path;
-
-    const docType   = req.body.doc_type    || 'Unknown';
-    const documentId= req.body.document_id || null;
-    const mineId    = req.body.mine_id     || null;
-
-    // Preprocess: resize to max 1024px, convert to JPEG
-    const processed = await sharp(fs.readFileSync(tempPath))
-      .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 88 })
-      .toBuffer();
-
-    const base64 = processed.toString('base64');
-    const { text, model } = await callGeminiOCR(base64, docType);
-
-    let extracted;
-    try { extracted = parseExtraction(text); }
-    catch { extracted = { summary: 'OCR extraction partially failed — raw text preserved.', raw_text: text.substring(0, 2000), confidence: 0.3 }; }
-
-    // If linked to a document record, update ai_analysis
-    if (documentId) {
-      const analysisText = extracted.summary || JSON.stringify(extracted).substring(0, 1000);
-      const riskFlags = [
-        ...(extracted.violations_mentioned?.length > 0 ? ['VIOLATIONS_MENTIONED'] : []),
-        ...(extracted.expiry_date && new Date(extracted.expiry_date) < new Date() ? ['EXPIRED'] : []),
-        ...(extracted.expiry_date && new Date(extracted.expiry_date) < new Date(Date.now() + 60*86400000) ? ['EXPIRING_SOON'] : []),
-      ];
-      await query(
-        `UPDATE documents SET ai_analysis=?, ai_risk_flags=?, updated_at=datetime('now') WHERE id=?`,
-        [analysisText, JSON.stringify(riskFlags), documentId]
-      );
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded. Send a JPEG, PNG, WebP, or PDF in the "document" field.',
+      });
     }
 
-    // Audit log
+    tempPath              = req.file.path;
+    const docType         = req.body.doc_type  || 'Unknown';
+    const mineId          = req.body.mine_id   || null;
+    const mimeType        = req.file.mimetype;
+    const originalName    = req.file.originalname || 'document';
+
+    // ── Run extraction ────────────────────────────────────────────────
+    let structured, rawText, modelUsed;
+    try {
+      const result = await extractDocument(tempPath, docType, mimeType);
+      structured = result.structured;
+      rawText    = result.raw_text || '';
+      modelUsed  = result.model   || 'gemini';
+    } catch (extractErr) {
+      // Return a partial result so the UI can still show what went wrong
+      return res.status(422).json({
+        success: false,
+        message: extractErr.message,
+        hint:    mimeType === 'application/pdf'
+          ? 'For scanned PDFs (image-only), please convert to JPEG/PNG first.'
+          : 'Ensure the image is clear, well-lit, and shows document text.',
+      });
+    }
+
+    // ── Auto-detect best save target ──────────────────────────────────
+    const suggestedModule = suggestTargetModule(structured);
+
+    // ── Pre-compute field previews for each save target ───────────────
+    const previews = {
+      inspection:        mapToInspection(structured, mineId, req.user.id),
+      compliance:        mapToComplianceRecord(structured, mineId, req.user.id),
+      safety_observation:mapToSafetyObservation(structured, mineId, req.user.id),
+      violation:         mapToViolation(structured, mineId, req.user.id),
+    };
+
+    // ── Persist extraction to DB ──────────────────────────────────────
+    const extractionId = await saveOcrExtraction({
+      userId:    req.user.id,
+      mineId,
+      filename:  originalName,
+      fileType:  mimeType === 'application/pdf' ? 'pdf' : 'image',
+      docType,
+      rawText,
+      structured,
+      confidence: structured.confidence || null,
+      model:     modelUsed,
+      targetModule: suggestedModule,
+      status:    'extracted',
+    });
+
+    // ── Audit log ─────────────────────────────────────────────────────
     await query(
-      `INSERT INTO audit_logs (id,user_id,action,entity_type,entity_id,description,mine_id,ip_address) VALUES (?,?,?,?,?,?,?,?)`,
-      [uuid(), req.user.id, 'OCR_EXTRACT', 'document', documentId || uuid(),
-       `OCR extraction: ${extracted.title || docType} (confidence: ${((extracted.confidence||0)*100).toFixed(0)}%)`,
-       mineId, req.ip]
+      `INSERT INTO audit_logs
+         (id,user_id,action,entity_type,entity_id,description,mine_id,ip_address)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      [
+        uuid(), req.user.id, 'OCR_EXTRACT', 'ocr_extraction', extractionId,
+        `OCR: ${originalName} → ${structured.title || docType} (${Math.round((structured.confidence||0)*100)}% conf)`,
+        mineId, req.ip,
+      ]
     );
 
     res.json({
-      success:    true,
-      model_used: model,
-      data:       extracted,
+      success:          true,
+      extraction_id:    extractionId,
+      model_used:       modelUsed,
+      file_type:        mimeType === 'application/pdf' ? 'pdf' : 'image',
+      suggested_module: suggestedModule,
+      data:             structured,
+      raw_text:         rawText.substring(0, 5000), // cap for client
+      previews,         // pre-mapped fields per module
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    next(err);
   } finally {
-    if (tempPath) try { fs.unlinkSync(tempPath); } catch {}
+    if (tempPath) { try { fs.unlinkSync(tempPath); } catch {} }
   }
 };
 
-exports.health = (req, res) => {
-  res.json({
-    success: true,
-    service: 'KhanNetra OCR',
-    backend: 'Gemini Vision',
-    configured: !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_gemini_api_key_here'),
-    supported_types: ['License','Certificate','Permit','Inspection Report','Environmental Report','Safety Certificate'],
-  });
+/* ─────────────────────────────────────────────────────────────────────────
+   POST /ocr/save
+   Body JSON: {
+     extraction_id, target_module,
+     fields (overridden/edited fields),
+     mine_id
+   }
+──────────────────────────────────────────────────────────────────────── */
+exports.saveExtraction = async (req, res, next) => {
+  try {
+    const { extraction_id, target_module, fields, mine_id } = req.body;
+
+    if (!extraction_id || !target_module || !fields) {
+      return res.status(400).json({
+        success: false,
+        message: 'extraction_id, target_module, and fields are required.',
+      });
+    }
+
+    const validModules = ['inspection', 'compliance', 'safety_observation', 'violation'];
+    if (!validModules.includes(target_module)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid target_module. Must be one of: ${validModules.join(', ')}`,
+      });
+    }
+
+    // Ensure the extraction record exists and belongs to this user
+    const extraction = (await query(
+      `SELECT * FROM ocr_extractions WHERE id=? AND user_id=?`,
+      [extraction_id, req.user.id]
+    )).rows[0];
+
+    if (!extraction) {
+      return res.status(404).json({ success: false, message: 'Extraction record not found.' });
+    }
+    if (extraction.status === 'saved') {
+      return res.status(409).json({
+        success: false,
+        message: 'This extraction has already been saved.',
+        saved_record_id: extraction.saved_record_id,
+        target_module:   extraction.target_module,
+      });
+    }
+
+    // Inject mine_id from request if not already in fields
+    const mId = mine_id || fields.mine_id || extraction.mine_id;
+    if (!mId) {
+      return res.status(400).json({
+        success: false,
+        message: 'mine_id is required to save records. Select a mine first.',
+      });
+    }
+    fields.mine_id = mId;
+
+    // ── Save to target module ─────────────────────────────────────────
+    let savedId;
+    let moduleName;
+    switch (target_module) {
+      case 'inspection':
+        // Merge user edits with inspector_id
+        fields.inspector_id = fields.inspector_id || req.user.id;
+        savedId = await saveAsInspection(fields, fields._checklist_items || []);
+        moduleName = 'Inspection';
+        break;
+
+      case 'compliance':
+        savedId = await saveAsCompliance(fields);
+        moduleName = 'Compliance Record';
+        break;
+
+      case 'safety_observation':
+        fields.reported_by = fields.reported_by || req.user.id;
+        savedId = await saveAsSafetyObservation(fields);
+        moduleName = 'Safety Observation';
+        break;
+
+      case 'violation':
+        fields.detected_by = fields.detected_by || req.user.id;
+        savedId = await saveAsViolation(fields);
+        moduleName = 'Violation';
+        break;
+    }
+
+    // ── Update ocr_extractions record ─────────────────────────────────
+    await query(
+      `UPDATE ocr_extractions
+         SET status='saved', target_module=?, saved_record_id=?, updated_at=datetime('now')
+       WHERE id=?`,
+      [target_module, savedId, extraction_id]
+    );
+
+    // ── Audit log ─────────────────────────────────────────────────────
+    await query(
+      `INSERT INTO audit_logs
+         (id,user_id,action,entity_type,entity_id,description,mine_id,ip_address)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      [
+        uuid(), req.user.id, 'OCR_SAVE', target_module, savedId,
+        `OCR save → ${moduleName} (from extraction ${extraction_id.slice(0,8)})`,
+        mId, req.ip,
+      ]
+    );
+
+    res.json({
+      success:        true,
+      message:        `Successfully saved as ${moduleName}.`,
+      target_module,
+      saved_record_id: savedId,
+      extraction_id,
+      navigate_to:    {
+        inspection:         `/inspections`,
+        compliance:         `/compliance`,
+        safety_observation: `/safety-hub`,
+        violation:          `/violations`,
+      }[target_module],
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   GET /ocr/history
+   Query params: page, limit, status, mine_id
+──────────────────────────────────────────────────────────────────────── */
+exports.getHistory = async (req, res, next) => {
+  try {
+    const page   = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit  = Math.min(50, parseInt(req.query.limit) || 20);
+    const offset = (page - 1) * limit;
+
+    // Admins see all; others see only their own
+    const isAdmin = ['admin', 'government_officer'].includes(req.user.role);
+    const userFilter = isAdmin ? '' : `AND o.user_id = '${req.user.id}'`;
+    const mineFilter = req.query.mine_id ? `AND o.mine_id = '${req.query.mine_id}'` : '';
+    const statusFilter = req.query.status ? `AND o.status = '${req.query.status}'` : '';
+
+    const rows = (await query(
+      `SELECT o.id, o.original_filename, o.file_type, o.doc_type,
+              o.confidence, o.model_used, o.target_module, o.saved_record_id,
+              o.status, o.created_at,
+              u.full_name as uploaded_by,
+              m.name as mine_name,
+              json_extract(o.structured_data, '$.title') as doc_title,
+              json_extract(o.structured_data, '$.document_type') as doc_type_extracted,
+              json_extract(o.structured_data, '$.summary') as summary
+       FROM ocr_extractions o
+       LEFT JOIN users u ON o.user_id = u.id
+       LEFT JOIN mines m ON o.mine_id = m.id
+       WHERE 1=1 ${userFilter} ${mineFilter} ${statusFilter}
+       ORDER BY o.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    )).rows;
+
+    const total = (await query(
+      `SELECT COUNT(*) as cnt FROM ocr_extractions o
+       WHERE 1=1 ${userFilter} ${mineFilter} ${statusFilter}`
+    )).rows[0]?.cnt || 0;
+
+    res.json({
+      success: true,
+      data:    rows,
+      meta:    { total, page, limit, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) { next(err); }
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   GET /ocr/history/:id
+──────────────────────────────────────────────────────────────────────── */
+exports.getExtractionById = async (req, res, next) => {
+  try {
+    const isAdmin = ['admin', 'government_officer'].includes(req.user.role);
+    const row = (await query(
+      `SELECT o.*, u.full_name as uploaded_by, m.name as mine_name
+       FROM ocr_extractions o
+       LEFT JOIN users u ON o.user_id = u.id
+       LEFT JOIN mines m ON o.mine_id = m.id
+       WHERE o.id=? ${isAdmin ? '' : `AND o.user_id='${req.user.id}'`}`,
+      [req.params.id]
+    )).rows[0];
+
+    if (!row) return res.status(404).json({ success: false, message: 'Not found.' });
+
+    // Parse JSON fields
+    try { row.structured_data = JSON.parse(row.structured_data); } catch {}
+
+    res.json({ success: true, data: row });
+  } catch (err) { next(err); }
+};
+
+/* ─────────────────────────────────────────────────────────────────────────
+   DELETE /ocr/history/:id
+──────────────────────────────────────────────────────────────────────── */
+exports.deleteExtraction = async (req, res, next) => {
+  try {
+    const row = (await query(
+      `SELECT id FROM ocr_extractions WHERE id=? AND user_id=?`,
+      [req.params.id, req.user.id]
+    )).rows[0];
+
+    if (!row) return res.status(404).json({ success: false, message: 'Not found.' });
+
+    await query(
+      `UPDATE ocr_extractions SET status='discarded', updated_at=datetime('now') WHERE id=?`,
+      [req.params.id]
+    );
+    res.json({ success: true, message: 'Extraction discarded.' });
+  } catch (err) { next(err); }
 };

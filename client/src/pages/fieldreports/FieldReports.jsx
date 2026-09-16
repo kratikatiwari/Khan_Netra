@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
+import BackButton from '../../components/ui/BackButton';
 import { FiPlus, FiMapPin, FiSearch, FiEye, FiEdit2, FiMap, FiList, FiAlertTriangle } from 'react-icons/fi';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
@@ -62,7 +63,7 @@ export default function FieldReports() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5"><BackButton className="mb-1"/>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="page-title flex items-center gap-2"><FiMapPin className="text-amber-400"/> Field Reports</h1>
@@ -102,14 +103,14 @@ export default function FieldReports() {
       {view==='map' && (
         <div className="card p-0 overflow-hidden border border-coal-700/60" style={{height:'480px'}}>
           <MapContainer center={[22.5,82.5]} zoom={5} style={{height:'100%',width:'100%'}}>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='© OpenStreetMap'/>
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='Â© OpenStreetMap'/>
             {mapData.filter(r=>r.latitude&&r.longitude).map(r => (
               <Marker key={r.id} position={[r.latitude,r.longitude]} icon={mkIcon(r.severity)}>
                 <Popup maxWidth={240}>
                   <div style={{fontFamily:'Inter,sans-serif',fontSize:'12px'}}>
                     <p style={{fontWeight:800,color:'#f59e0b',marginBottom:4}}>{r.report_number}</p>
                     <p style={{fontWeight:600,marginBottom:2}}>{r.title}</p>
-                    <p style={{color:'#6c757d',marginBottom:4}}>{r.mine_name} · {r.location_name}</p>
+                    <p style={{color:'#6c757d',marginBottom:4}}>{r.mine_name} Â· {r.location_name}</p>
                     <span style={{padding:'2px 8px',borderRadius:999,fontSize:'10px',fontWeight:700,
                       background:r.severity==='critical'?'rgba(239,68,68,.2)':r.severity==='high'?'rgba(245,158,11,.2)':'rgba(34,197,94,.2)',
                       color:r.severity==='critical'?'#ef4444':r.severity==='high'?'#f59e0b':'#22c55e'}}>
@@ -137,16 +138,16 @@ export default function FieldReports() {
                     <td><span className="font-mono text-xs font-bold text-amber-400">{r.report_number}</span></td>
                     <td>
                       <p className="font-semibold text-coal-200 text-sm">{r.mine_name}</p>
-                      <p className="text-[11px] text-coal-600">{r.location_name||'—'}</p>
+                      <p className="text-[11px] text-coal-600">{r.location_name||'â€”'}</p>
                     </td>
                     <td><span className="text-sm text-coal-300">{r.report_type}</span></td>
                     <td><Badge color={SEV_COLOR[r.severity]||'gray'}>{r.severity}</Badge></td>
                     <td><Badge color={r.status==='resolved'?'green':r.status==='in_progress'?'yellow':'red'} dot>{r.status?.replace('_',' ')}</Badge></td>
-                    <td><span className="text-xs text-coal-400">{r.reporter_name||'—'}</span></td>
+                    <td><span className="text-xs text-coal-400">{r.reporter_name||'â€”'}</span></td>
                     <td><span className="text-xs text-coal-600">{formatDate(r.created_at)}</span></td>
                     <td>
                       {r.latitude ? (
-                        <span className="text-[10px] text-success-400 font-mono">📍 {parseFloat(r.latitude).toFixed(4)}</span>
+                        <span className="text-[10px] text-success-400 font-mono">ðŸ“ {parseFloat(r.latitude).toFixed(4)}</span>
                       ) : <span className="text-[10px] text-coal-700">No GPS</span>}
                     </td>
                     <td>
@@ -170,8 +171,8 @@ export default function FieldReports() {
             </div>
             <h3 className="font-bold text-coal-100 text-base">{viewItem.title}</h3>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {[['Mine',viewItem.mine_name],['Type',viewItem.report_type],['Location',viewItem.location_name||'—'],
-                ['Reporter',viewItem.reporter_name||'—'],['Date',formatDateTime(viewItem.created_at)],
+              {[['Mine',viewItem.mine_name],['Type',viewItem.report_type],['Location',viewItem.location_name||'â€”'],
+                ['Reporter',viewItem.reporter_name||'â€”'],['Date',formatDateTime(viewItem.created_at)],
                 ['GPS', viewItem.latitude ? `${parseFloat(viewItem.latitude).toFixed(5)}, ${parseFloat(viewItem.longitude).toFixed(5)}` : 'Not recorded']
               ].map(([k,v]) => (
                 <div key={k}><p className="text-[10px] text-coal-600 uppercase tracking-widest mb-0.5">{k}</p><p className="font-semibold text-coal-200 text-sm">{v}</p></div>
@@ -229,10 +230,10 @@ function FieldReportForm({ mines, onSave, onCancel }) {
         <div className="form-group"><label className="label">Report Type *</label><select {...register('report_type',{required:true})} className="select"><option value="">Select Type</option>{TYPE_LIST.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
         <div className="form-group col-span-2"><label className="label">Title *</label><input {...register('title',{required:true})} className="input" placeholder="Brief description of the observation"/></div>
         <div className="form-group"><label className="label">Severity *</label><select {...register('severity',{required:true})} className="select">{['critical','high','warning','medium','low','info'].map(s=><option key={s} value={s}>{s}</option>)}</select></div>
-        <div className="form-group"><label className="label">Location Name</label><input {...register('location_name')} className="input" placeholder="Level 3, Gallery C…"/></div>
-        <div className="form-group col-span-2"><label className="label">Description *</label><textarea {...register('description',{required:true})} rows={3} className="input resize-none" placeholder="Detailed description of what was observed…"/></div>
+        <div className="form-group"><label className="label">Location Name</label><input {...register('location_name')} className="input" placeholder="Level 3, Gallery Câ€¦"/></div>
+        <div className="form-group col-span-2"><label className="label">Description *</label><textarea {...register('description',{required:true})} rows={3} className="input resize-none" placeholder="Detailed description of what was observedâ€¦"/></div>
         <div className="form-group"><label className="label">Latitude</label><input type="number" step="0.000001" {...register('latitude')} className="input" placeholder="Auto-filled"/></div>
-        <div className="form-group"><label className="label">Longitude <button type="button" onClick={getGPS} className="ml-2 text-[10px] text-amber-400 hover:underline">📍 Use My Location</button></label><input type="number" step="0.000001" {...register('longitude')} className="input" placeholder="Auto-filled"/></div>
+        <div className="form-group"><label className="label">Longitude <button type="button" onClick={getGPS} className="ml-2 text-[10px] text-amber-400 hover:underline">ðŸ“ Use My Location</button></label><input type="number" step="0.000001" {...register('longitude')} className="input" placeholder="Auto-filled"/></div>
         <div className="form-group col-span-2 flex items-center gap-3">
           <input type="checkbox" id="follow_up" {...register('follow_up_required')} className="w-4 h-4 accent-amber-500"/>
           <label htmlFor="follow_up" className="text-sm text-coal-300">Follow-up required</label>
@@ -240,7 +241,7 @@ function FieldReportForm({ mines, onSave, onCancel }) {
       </div>
       <div className="flex justify-end gap-3 pt-2 border-t border-coal-700/50">
         <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
-        <button type="submit" disabled={isSubmitting} className="btn-primary">{isSubmitting?'Submitting…':'Submit Report'}</button>
+        <button type="submit" disabled={isSubmitting} className="btn-primary">{isSubmitting?'Submittingâ€¦':'Submit Report'}</button>
       </div>
     </form>
   );

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
+import BackButton from '../../components/ui/BackButton';
 import { useSearchParams } from 'react-router-dom';
 import { FiPlus, FiAlertTriangle, FiEye, FiEdit2 } from 'react-icons/fi';
 import { incidentsApi, minesApi } from '../../services/api';
@@ -39,7 +40,7 @@ export default function Incidents() {
   useEffect(() => { minesApi.getAll({ limit:100 }).then(r=>setMines(r.data)).catch(()=>{}); }, []);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5"><BackButton className="mb-1"/>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="page-title flex items-center gap-2"><FiAlertTriangle className="text-amber-400"/> Incidents & Safety</h1>
@@ -84,7 +85,7 @@ export default function Incidents() {
                   <td><Badge color={SEV[i.severity]}>{i.severity.replace('_',' ')}</Badge></td>
                   <td>
                     <span className={clsx('text-sm font-bold', parseInt(i.fatalities_count)>0?'text-danger-400':'text-coal-300')}>
-                      {i.injuries_count} inj · {i.fatalities_count} fatal
+                      {i.injuries_count} inj Â· {i.fatalities_count} fatal
                     </span>
                   </td>
                   <td><Badge color={i.dgms_notified?'green':'gray'}>{i.dgms_notified?'Yes':'No'}</Badge></td>
@@ -115,8 +116,8 @@ export default function Incidents() {
             <div className="grid grid-cols-2 gap-4 text-sm">
               {[['Mine',viewItem.mine_name],['Type',viewItem.type],['Category',viewItem.category],
                 ['Date & Time',formatDateTime(viewItem.incident_date)],
-                ['Location',viewItem.location_in_mine||'—'],
-                ['Casualties', `${viewItem.injuries_count} Injured · ${viewItem.fatalities_count} Fatal`]
+                ['Location',viewItem.location_in_mine||'â€”'],
+                ['Casualties', `${viewItem.injuries_count} Injured Â· ${viewItem.fatalities_count} Fatal`]
               ].map(([k,v])=>(
                 <div key={k}>
                   <p className="text-[10px] text-coal-600 uppercase tracking-widest mb-0.5">{k}</p>

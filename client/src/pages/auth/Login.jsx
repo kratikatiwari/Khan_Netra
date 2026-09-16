@@ -78,20 +78,22 @@ const onBlurInput = (hasErr) => e => {
 export default function Login() {
   const navigate          = useNavigate();
   const { login }         = useAuthStore();
-  const [showPwd, setPwd] = useState(false);
-  const [unverifiedEmail, setUnverifiedEmail] = useState(null);
-  const [resending,        setResending]       = useState(false);
+  const [showPwd,    setPwd]    = useState(false);
+  const [statusMsg,  setStatusMsg] = useState(null); // { type: 'pending'|'rejected'|'suspended', text }
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm();
 
   const onSubmit = async (data) => {
-    setUnverifiedEmail(null);
+    setStatusMsg(null);
     const result = await login(data);
     if (result.success) {
       toast.success('Welcome back!');
       navigate('/dashboard');
-    } else if (result.code === 'EMAIL_NOT_VERIFIED') {
-      setUnverifiedEmail(data.email);
-      toast.error('Please verify your email address before signing in.');
+    } else if (result.code === 'ACCOUNT_PENDING') {
+      setStatusMsg({ type: 'pending', text: result.message || 'Your account is awaiting administrator approval.' });
+    } else if (result.code === 'ACCOUNT_REJECTED') {
+      setStatusMsg({ type: 'rejected', text: result.message || 'Your registration request was not approved.' });
+    } else if (result.code === 'ACCOUNT_SUSPENDED') {
+      setStatusMsg({ type: 'suspended', text: result.message || 'Your account has been suspended. Contact the administrator.' });
     } else if (result.code === 'RATE_LIMITED' || result.status === 429) {
       toast.error('Too many login attempts. Please wait 15 minutes and try again.', { duration: 6000 });
     } else {
@@ -99,18 +101,8 @@ export default function Login() {
     }
   };
 
-  const handleResend = async () => {
-    if (!unverifiedEmail) return;
-    setResending(true);
-    try {
-      const res = await authApi.resendVerification({ email: unverifiedEmail });
-      toast.success(res.message || 'Verification email resent — check your inbox!');
-    } catch { toast.error('Could not resend. Please try again.'); }
-    finally { setResending(false); }
-  };
-
   const quickLogin = (email) => {
-    setUnverifiedEmail(null);
+    setStatusMsg(null);
     setValue('email', email);
     setValue('password', 'KhanNetra@2024');
   };
@@ -137,19 +129,19 @@ export default function Login() {
            className="hidden lg:flex">
 
         {/* Hero image — local mine asset */}
-        <img
-          src="/assets/mine-dashboard.jpeg"
-          alt="KhanNetra — Open-pit coal mine operations"
-          style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', objectPosition:'center center' }}
-          loading="eager"
-          onError={e => {
-            // fallback to a mining photo if local asset not found
-            if (!e.currentTarget.src.includes('unsplash')) {
-              e.currentTarget.src = 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1600&q=85&auto=format&fit=crop';
-            }
-          }}
-        />
-
+      <img
+  src="/1789310049569.png"
+  alt="KhanNetra - Open-pit coal mine operations"
+  style={{
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    objectPosition: "center",
+    display: "block"
+  }}
+/>
         {/* Layered overlay — preserves image visibility, adds depth */}
         <div style={{ position:'absolute', inset:0, background:'linear-gradient(135deg,rgba(6,14,28,.78) 0%,rgba(6,14,28,.45) 55%,rgba(6,14,28,.68) 100%)' }}/>
         {/* Bottom vignette */}
@@ -291,20 +283,23 @@ export default function Login() {
             Enter your credentials to access the system
           </p>
 
-          {/* Email not verified banner */}
-          {unverifiedEmail && (
+          {/* Account status banners (PENDING / REJECTED / SUSPENDED) */}
+          {statusMsg?.type === 'pending' && (
             <div style={{ background:'rgba(245,158,11,.08)', border:'1px solid rgba(245,158,11,.3)', borderRadius:'12px', padding:'14px 16px', marginBottom:'16px' }}>
-              <p style={{ color:'#fbbf24', fontWeight:700, fontSize:'13px', margin:'0 0 6px' }}>
-                ✉️ Email not verified
-              </p>
-              <p style={{ color:'rgba(255,255,255,.55)', fontSize:'12px', margin:'0 0 10px', lineHeight:1.5 }}>
-                Please verify <strong>{unverifiedEmail}</strong> before signing in.
-                Check your inbox (and spam folder) for the verification link.
-              </p>
-              <button onClick={handleResend} disabled={resending}
-                style={{ background:'rgba(245,158,11,.15)', border:'1px solid rgba(245,158,11,.35)', borderRadius:'8px', color:'#fbbf24', fontSize:'12px', fontWeight:700, padding:'7px 14px', cursor:'pointer', fontFamily:'inherit', opacity: resending ? 0.6 : 1 }}>
-                {resending ? '⏳ Sending…' : '🔁 Resend Verification Email'}
-              </button>
+              <p style={{ color:'#fbbf24', fontWeight:700, fontSize:'13px', margin:'0 0 4px' }}>⏳ Account Pending Approval</p>
+              <p style={{ color:'rgba(255,255,255,.55)', fontSize:'12px', margin:0, lineHeight:1.5 }}>{statusMsg.text}</p>
+            </div>
+          )}
+          {statusMsg?.type === 'rejected' && (
+            <div style={{ background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.3)', borderRadius:'12px', padding:'14px 16px', marginBottom:'16px' }}>
+              <p style={{ color:'#f87171', fontWeight:700, fontSize:'13px', margin:'0 0 4px' }}>❌ Registration Not Approved</p>
+              <p style={{ color:'rgba(255,255,255,.55)', fontSize:'12px', margin:0, lineHeight:1.5 }}>{statusMsg.text}</p>
+            </div>
+          )}
+          {statusMsg?.type === 'suspended' && (
+            <div style={{ background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.3)', borderRadius:'12px', padding:'14px 16px', marginBottom:'16px' }}>
+              <p style={{ color:'#f87171', fontWeight:700, fontSize:'13px', margin:'0 0 4px' }}>🚫 Account Suspended</p>
+              <p style={{ color:'rgba(255,255,255,.55)', fontSize:'12px', margin:0, lineHeight:1.5 }}>{statusMsg.text}</p>
             </div>
           )}
 
@@ -356,11 +351,10 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setPwd(v => !v)}
+                  className="login-eye"
                   style={{ position:'absolute', right:'12px', top:'50%', transform:'translateY(-50%)',
                            background:'none', border:'none', cursor:'pointer', padding:0,
-                           color:'rgba(255,255,255,.3)', display:'flex', transition:'color .15s' }}
-                  onMouseEnter={e => e.currentTarget.style.color='rgba(255,255,255,.7)'}
-                  onMouseLeave={e => e.currentTarget.style.color='rgba(255,255,255,.3)'}
+                           color:'rgba(255,255,255,.35)', display:'flex', transition:'color .15s' }}
                 >
                   {showPwd ? <IconEyeOff/> : <IconEye/>}
                 </button>
@@ -418,14 +412,13 @@ export default function Login() {
                 <button
                   key={d.email}
                   type="button"
+                  className="demo-btn"
                   onClick={() => quickLogin(d.email)}
                   style={{
                     textAlign:'left', padding:'10px 12px', borderRadius:'10px', cursor:'pointer',
                     background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.08)',
                     transition:'all .15s', fontFamily:'inherit',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor='rgba(245,158,11,.38)'; e.currentTarget.style.background='rgba(245,158,11,.06)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor='rgba(255,255,255,.08)'; e.currentTarget.style.background='rgba(255,255,255,.04)'; }}
                 >
                   <p style={{ color:'rgba(255,255,255,.72)', fontSize:'12px', fontWeight:700, margin:0 }}>{d.role}</p>
                   <p style={{ color:'rgba(255,255,255,.3)', fontSize:'10px', margin:'2px 0 0' }}>{d.label}</p>
@@ -453,9 +446,10 @@ export default function Login() {
       <style>{`
         @keyframes kn-spin  { to { transform: rotate(360deg); } }
         @keyframes kn-pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+        /* Login placeholders: clearly white so text is readable on dark glass */
         input[type=email]::placeholder,
         input[type=password]::placeholder,
-        input[type=text]::placeholder { color: rgba(255,255,255,.22) !important; }
+        input[type=text]::placeholder { color: rgba(255,255,255,.55) !important; opacity:1 !important; }
         input:-webkit-autofill,
         input:-webkit-autofill:focus {
           -webkit-text-fill-color: #edf2f7 !important;
@@ -463,6 +457,13 @@ export default function Login() {
           caret-color: #edf2f7;
           transition: background-color 9999s ease-in-out;
         }
+        /* Yellow focus ring on login inputs */
+        input:focus-visible { outline: none !important; }
+        /* Hover on password eye button */
+        .login-eye:hover { color: #F5B800 !important; }
+        /* Hover on demo login buttons */
+        .demo-btn:hover { border-color: rgba(245,184,0,.50) !important; background: rgba(245,184,0,.08) !important; }
+        .demo-btn:hover p:first-child { color: #F5B800 !important; }
         @media (max-width: 1024px) {
           .login-left { display: none !important; }
         }

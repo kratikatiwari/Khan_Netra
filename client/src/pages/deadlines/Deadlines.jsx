@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
+import BackButton from '../../components/ui/BackButton';
 import { FiClock, FiPlus, FiAlertTriangle, FiCheckCircle, FiEdit2 } from 'react-icons/fi';
 import { deadlinesApi, minesApi } from '../../services/api';
 import Badge from '../../components/ui/Badge';
@@ -12,7 +13,7 @@ import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
 const STATUS_COLOR = { pending:'yellow', in_progress:'blue', completed:'green', overdue:'red', cancelled:'gray' };
-const ESC_LABEL = ['None','Level 1','Level 2','Level 3 — Critical'];
+const ESC_LABEL = ['None','Level 1','Level 2','Level 3 â€” Critical'];
 
 export default function Deadlines() {
   const { user } = useAuthStore();
@@ -52,7 +53,7 @@ export default function Deadlines() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5"><BackButton className="mb-1"/>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="page-title flex items-center gap-2"><FiClock className="text-amber-400"/> Compliance Deadlines</h1>
@@ -89,7 +90,7 @@ export default function Deadlines() {
               <div key={d.id} className="flex items-center justify-between p-2 rounded-lg bg-danger-600/10 border border-danger-500/20">
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-danger-300 truncate">{d.title}</p>
-                  <p className="text-[11px] text-danger-500">{d.mine_name} · {d.days_overdue}d overdue · Esc: {ESC_LABEL[Math.min(d.escalation_level,3)]}</p>
+                  <p className="text-[11px] text-danger-500">{d.mine_name} Â· {d.days_overdue}d overdue Â· Esc: {ESC_LABEL[Math.min(d.escalation_level,3)]}</p>
                 </div>
                 <button onClick={() => markComplete(d.id)} className="btn-success btn-xs shrink-0 ml-2">Complete</button>
               </div>
@@ -106,7 +107,7 @@ export default function Deadlines() {
             {upcoming.map(d => (
               <div key={d.id} className="px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs">
                 <span className="font-semibold text-amber-300">{d.days_remaining}d</span>
-                <span className="text-coal-500 mx-1">·</span>
+                <span className="text-coal-500 mx-1">Â·</span>
                 <span className="text-coal-300">{d.title}</span>
                 <span className="text-coal-600 ml-1">({d.mine_name})</span>
               </div>
@@ -143,10 +144,10 @@ export default function Deadlines() {
                     <td><span className="text-xs text-coal-400">{formatDate(d.deadline_date)}</span></td>
                     <td>
                       <span className={clsx('text-sm tabular-nums', daysColor)}>
-                        {days === null ? '—' : days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`}
+                        {days === null ? 'â€”' : days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`}
                       </span>
                     </td>
-                    <td><span className="text-xs text-coal-400">{d.responsible_person||'—'}</span></td>
+                    <td><span className="text-xs text-coal-400">{d.responsible_person||'â€”'}</span></td>
                     <td>
                       {d.escalation_level > 0 ? (
                         <Badge color={d.escalation_level>=2?'red':'yellow'}>{ESC_LABEL[Math.min(d.escalation_level,3)]}</Badge>
@@ -192,7 +193,7 @@ function DeadlineForm({ mines, deadline, onSave, onCancel }) {
       <div className="grid grid-cols-2 gap-4">
         <div className="form-group"><label className="label">Mine *</label><select {...register('mine_id',{required:true})} className="select"><option value="">Select Mine</option>{mines.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
         <div className="form-group"><label className="label">Deadline Date *</label><input type="date" {...register('deadline_date',{required:true})} className="input"/></div>
-        <div className="form-group col-span-2"><label className="label">Title *</label><input {...register('title',{required:true})} className="input" placeholder="License Renewal, ETP Installation…"/></div>
+        <div className="form-group col-span-2"><label className="label">Title *</label><input {...register('title',{required:true})} className="input" placeholder="License Renewal, ETP Installationâ€¦"/></div>
         <div className="form-group col-span-2"><label className="label">Description</label><textarea {...register('description')} rows={2} className="input resize-none"/></div>
         <div className="form-group"><label className="label">Responsible Person</label><input {...register('responsible_person')} className="input" placeholder="Name or designation"/></div>
         {deadline && (
@@ -201,7 +202,7 @@ function DeadlineForm({ mines, deadline, onSave, onCancel }) {
       </div>
       <div className="flex justify-end gap-3 pt-2 border-t border-coal-700/50">
         <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
-        <button type="submit" disabled={isSubmitting} className="btn-primary">{isSubmitting?'Saving…':deadline?'Update':'Add Deadline'}</button>
+        <button type="submit" disabled={isSubmitting} className="btn-primary">{isSubmitting?'Savingâ€¦':deadline?'Update':'Add Deadline'}</button>
       </div>
     </form>
   );

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
+import BackButton from '../../components/ui/BackButton';
 import { useSearchParams } from 'react-router-dom';
 import { FiUpload, FiFileText, FiSearch, FiEye, FiTrash2, FiAlertTriangle, FiCpu, FiDownload } from 'react-icons/fi';
 import { useDropzone } from 'react-dropzone';
@@ -48,7 +49,8 @@ export default function Documents() {
     setAnalyzing(doc.id);
     try {
       const res = await documentsApi.analyze(doc.id);
-      setViewDoc({ ...doc, ai_analysis: res.data.analysis, ai_risk_flags: res.data.riskFlags });
+      const analysisData = res.data ?? res;
+      setViewDoc({ ...doc, ai_analysis: analysisData.analysis, ai_risk_flags: analysisData.riskFlags });
       toast.success('AI Analysis complete');
     } catch {} finally { setAnalyzing(null); }
   };
@@ -57,7 +59,7 @@ export default function Documents() {
   const expiringSoonCount = alerts.filter(a => a.status === 'expiring_soon').length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6"><BackButton className="mb-1"/>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="page-title">Document Management</h1>
@@ -76,7 +78,7 @@ export default function Documents() {
                 <span className="font-semibold text-red-700">{expiryAlertCount} Expired Document{expiryAlertCount > 1 ? 's' : ''}</span>
               </div>
               {alerts.filter(a => a.status === 'expired').slice(0, 3).map(d => (
-                <div key={d.id} className="text-xs text-red-600 py-1 border-b border-red-100 last:border-0">{d.title} — {d.mine_name}</div>
+                <div key={d.id} className="text-xs text-red-600 py-1 border-b border-red-100 last:border-0">{d.title} â€” {d.mine_name}</div>
               ))}
             </div>
           )}
@@ -87,7 +89,7 @@ export default function Documents() {
                 <span className="font-semibold text-yellow-700">{expiringSoonCount} Expiring Soon</span>
               </div>
               {alerts.filter(a => a.status === 'expiring_soon').slice(0, 3).map(d => (
-                <div key={d.id} className="text-xs text-yellow-700 py-1 border-b border-yellow-100 last:border-0">{d.title} — {d.mine_name} ({Math.abs(d.days_until_expiry)} days)</div>
+                <div key={d.id} className="text-xs text-yellow-700 py-1 border-b border-yellow-100 last:border-0">{d.title} â€” {d.mine_name} ({Math.abs(d.days_until_expiry)} days)</div>
               ))}
             </div>
           )}
@@ -145,7 +147,7 @@ export default function Documents() {
                   </td>
                   <td><span className="text-sm">{doc.mine_name}</span></td>
                   <td><Badge color={doc.type === 'License' ? 'blue' : doc.type === 'Certificate' ? 'green' : 'gray'}>{doc.type}</Badge></td>
-                  <td><span className="text-xs text-coal-500">{doc.issuing_authority || '—'}</span></td>
+                  <td><span className="text-xs text-coal-500">{doc.issuing_authority || 'â€”'}</span></td>
                   <td><span className="text-xs">{formatDate(doc.issue_date)}</span></td>
                   <td>
                     <span className={clsx('text-xs font-medium', doc.status === 'expired' ? 'text-red-600' : doc.status === 'expiring_soon' ? 'text-yellow-600' : 'text-coal-600')}>
@@ -177,7 +179,7 @@ export default function Documents() {
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div><p className="text-xs text-coal-400">Mine</p><p className="font-medium">{viewDoc.mine_name}</p></div>
               <div><p className="text-xs text-coal-400">Document #</p><p className="font-mono text-xs">{viewDoc.document_number}</p></div>
-              <div><p className="text-xs text-coal-400">Issuing Authority</p><p>{viewDoc.issuing_authority || '—'}</p></div>
+              <div><p className="text-xs text-coal-400">Issuing Authority</p><p>{viewDoc.issuing_authority || 'â€”'}</p></div>
               <div><p className="text-xs text-coal-400">Category</p><p>{viewDoc.category}</p></div>
               <div><p className="text-xs text-coal-400">Issue Date</p><p>{formatDate(viewDoc.issue_date)}</p></div>
               <div><p className="text-xs text-coal-400">Expiry Date</p><p className={viewDoc.status === 'expired' ? 'text-red-600 font-bold' : ''}>{formatDate(viewDoc.expiry_date)}</p></div>

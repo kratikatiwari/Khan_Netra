@@ -4,6 +4,7 @@
  * No facial recognition — workers are never identified.
  */
 import { useState, useRef, useEffect, useCallback } from 'react';
+import BackButton from '../../components/ui/BackButton';
 import {
   FiCamera, FiUpload, FiShield, FiAlertTriangle, FiCheckCircle,
   FiXCircle, FiInfo, FiRefreshCw, FiEye, FiCpu, FiMapPin,
@@ -326,7 +327,7 @@ export default function SafetyVision() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6"><BackButton className="mb-1"/>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-4">

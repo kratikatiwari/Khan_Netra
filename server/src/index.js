@@ -78,8 +78,9 @@ app.use('/api/v1', routes);
 app.use(notFound);
 app.use(errorHandler);
 
-// Scheduled jobs
-// Disaster alert polling — every 10 minutes
+// ── Scheduled jobs ────────────────────────────────────────────────────────────
+
+// 1. Disaster alert polling — every 10 minutes
 cron.schedule('*/10 * * * *', async () => {
   try {
     const { pollAllSources } = require('./services/disasterService');
@@ -87,35 +88,70 @@ cron.schedule('*/10 * * * *', async () => {
   } catch (e) { console.error('[Disaster cron]', e.message); }
 });
 
-// Compliance deadline escalation — every 6 hours
-// Daily document expiry check
+// 2. Daily document expiry check — 9 AM
+//    Fixed: uses SQLite datetime() / date() instead of PostgreSQL NOW()/CURRENT_DATE/INTERVAL
 cron.schedule('0 9 * * *', async () => {
   try {
-    // Update document statuses
-    await query(`UPDATE documents SET status = 'expired', updated_at = NOW() WHERE expiry_date < CURRENT_DATE AND status != 'expired' AND status != 'revoked'`);
-    await query(`UPDATE documents SET status = 'expiring_soon', updated_at = NOW() WHERE expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '60 days' AND status = 'active'`);
+    // Mark expired documents (SQLite syntax)
+    await query(
+      `UPDATE documents
+       SET status = 'expired', updated_at = datetime('now')
+       WHERE expiry_date < date('now')
+       AND status NOT IN ('expired', 'revoked')`
+    );
 
-    // Get newly expired docs
-    const expired = await query(`SELECT d.title, d.mine_id, m.name as mine_name FROM documents d JOIN mines m ON d.mine_id = m.id WHERE d.expiry_date = CURRENT_DATE`);
+    // Mark documents expiring within 60 days (SQLite date arithmetic)
+    await query(
+      `UPDATE documents
+       SET status = 'expiring_soon', updated_at = datetime('now')
+       WHERE expiry_date BETWEEN date('now') AND date('now', '+60 days')
+       AND status = 'active'`
+    );
+
+    // Notify admins for docs that expired today
+    const expired = await query(
+      `SELECT d.title, d.mine_id, m.name as mine_name
+       FROM documents d JOIN mines m ON d.mine_id = m.id
+       WHERE d.expiry_date = date('now')`
+    );
+
     for (const doc of expired.rows) {
-      const admins = await query(`SELECT id FROM users WHERE role IN ('admin', 'government_officer')`);
+      const admins = await query(
+        `SELECT id FROM users WHERE role IN ('admin', 'government_officer')`
+      );
       for (const admin of admins.rows) {
         await query(
-          `INSERT INTO notifications (id, user_id, mine_id, title, message, type, priority) VALUES ($1,$2,$3,$4,$5,'deadline','critical')`,
-          [uuidv4(), admin.id, doc.mine_id, '🔴 Document Expired Today', `"${doc.title}" at ${doc.mine_name} expired today. Immediate renewal required.`]
+          `INSERT INTO notifications (id, user_id, mine_id, title, message, type, priority)
+           VALUES (?, ?, ?, ?, ?, 'deadline', 'critical')`,
+          [
+            uuidv4(), admin.id, doc.mine_id,
+            '🔴 Document Expired Today',
+            `"${doc.title}" at ${doc.mine_name} expired today. Immediate renewal required.`,
+          ]
         );
       }
     }
-    console.log('✅ Daily document expiry check completed');
-  } catch (e) { console.error('Cron error:', e.message); }
+    console.log(`[Cron] Document expiry check complete — ${expired.rows.length} expired today`);
+  } catch (e) { console.error('[Cron] Document expiry error:', e.message); }
 });
 
-// Compliance deadline escalation — every 6 hours
+// 3. Compliance deadline escalation — every 6 hours
 cron.schedule('0 */6 * * *', async () => {
   try {
     const { runEscalation } = require('./controllers/deadlineController');
     await runEscalation();
-  } catch (e) { console.error('Escalation cron error:', e.message); }
+  } catch (e) { console.error('[Cron] Escalation error:', e.message); }
+});
+
+// 4. Mine risk & compliance score recalculation — every hour
+//    Recomputes all mine scores from real database records (violations, incidents,
+//    environmental readings, corrective actions, documents, compliance records).
+//    Scores written back to the mines table so every module sees current values.
+cron.schedule('0 * * * *', async () => {
+  try {
+    const { recalculateAllMineScores } = require('./services/analyticsService');
+    await recalculateAllMineScores();
+  } catch (e) { console.error('[Cron] Score recalc error:', e.message); }
 });
 
 const PORT = process.env.PORT || 5000;

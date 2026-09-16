@@ -41,19 +41,19 @@ export const downloadBlob = (blob, filename) => {
   document.body.removeChild(a); URL.revokeObjectURL(url);
 };
 
-/* ── Color helpers – now returns class names for the dark theme ─────────── */
+/* ── Color helpers ────────────────────────────────────────────────────── */
 export const scoreToColor = (score) => {
   const s = parseFloat(score) || 0;
-  if (s >= 80) return 'text-success-400';
-  if (s >= 60) return 'text-amber-400';
-  return 'text-danger-400';
+  if (s >= 80) return 'text-green-600';
+  if (s >= 60) return 'text-amber-600';
+  return 'text-red-600';
 };
 
 export const scoreToBg = (score) => {
   const s = parseFloat(score) || 0;
-  if (s >= 80) return 'bg-success-500';
+  if (s >= 80) return 'bg-green-500';
   if (s >= 60) return 'bg-amber-500';
-  return 'bg-danger-500';
+  return 'bg-red-500';
 };
 
 export const getSeverityColor = (severity) => {
@@ -79,12 +79,16 @@ export const getStatusColor = (status) => {
 };
 
 export const ROLES = {
-  admin:               { label: 'Administrator',    color: 'red'    },
-  government_officer:  { label: 'Govt Officer',     color: 'blue'   },
-  mine_manager:        { label: 'Mine Manager',     color: 'yellow' },
-  inspector:           { label: 'Inspector',        color: 'green'  },
-  safety_officer:      { label: 'Safety Officer',   color: 'orange' },
-  environment_officer: { label: 'Env Officer',      color: 'teal'   },
+  admin:                { label: 'System Admin',          color: 'red'    },
+  government_officer:   { label: 'DGMS / Govt. Officer',  color: 'blue'   },
+  mine_manager:         { label: 'Mine Manager',          color: 'yellow' },
+  inspector:            { label: 'Field Inspector',       color: 'green'  },
+  safety_officer:       { label: 'Safety Officer',        color: 'orange' },
+  environment_officer:  { label: 'Environmental Officer', color: 'teal'   },
+  contractor:           { label: 'Contractor',            color: 'purple' },
+  prototype_tester:     { label: 'Prototype Tester',      color: 'gray'   },
+  mining_engineer:      { label: 'Mining Engineer',       color: 'blue'   },
+  corporate_management: { label: 'Corporate Management',  color: 'red'    },
 };
 
 export const MINE_STATES = [
