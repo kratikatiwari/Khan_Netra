@@ -1,4 +1,4 @@
-/**
+ /**
  * KhanNetra — Workforce Migration
  * Adds missing columns to existing tables and creates
  * safety_certifications + worker_certifications tables.

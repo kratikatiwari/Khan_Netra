@@ -31,7 +31,7 @@ const validationErrors = (req) => {
 const ALLOWED_ROLES = [
   'admin', 'government_officer', 'mine_manager', 'inspector',
   'safety_officer', 'environment_officer', 'contractor', 'prototype_tester',
-  'mining_engineer', 'corporate_management',
+   'mining_engineer', 'corporate_management',
 ];
 
 /* ════════════════════════════════════════════════════════════════════════════
